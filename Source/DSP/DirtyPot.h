@@ -47,7 +47,6 @@ public:
 
     void seed (uint64_t s) noexcept override
     {
-        seedValue = s;
         contact.seed (hashCombine (s, 0x4A));
         wiper.seed (hashCombine (s, 0x4B));
         jitRng.seed (hashCombine (s, 0x4C));
@@ -65,7 +64,7 @@ public:
         vibration = p[P::ptVibration] * disturbance;
         dist = disturbance;
         WearMap::Settings ws;
-        ws.seed = hashCombine (seedValue, 0x5A);
+        ws.seed = hashCombine (mapSeed, 0x5A);
         ws.wear = dirt;
         ws.centre = p[P::ptWearPos];
         ws.width = p[P::ptWearWidth];
@@ -227,7 +226,6 @@ private:
             for (auto& c : t->z) for (auto& v : c) v = 0.0;
     }
 
-    uint64_t seedValue = 1;
     MotionDriver wiper;
     ContactModel contact;
     ChargeCircuit charge;

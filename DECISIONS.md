@@ -21,3 +21,13 @@ Wubforge document and is used only for its general interaction grammar (overlays
   gives identical output for any block size.
 - No automatic GitHub push: publishing to a remote is an outward-facing action the user did not authorise in this run.
 - DAW host loading cannot be performed unattended here; it is recorded as an explicit unverified release gate.
+- Declick fades for slot enable, Studio, Raw Hardware, plugin bypass and Studio stages are fixed 10 ms linear ramps
+  (not exponential) so identities are bit-exact once a switch settles; crossfades use an exact-at-1 lerp.
+- Wear/weak-spot maps derive from the user Seed only; the effective random stream is hash(Seed, Take). `New Take`
+  increments Take: timing, positions and fault maps stay, micro-events change. Bar re-keying never touches the maps.
+- Loose Jack `Short to Sleeve` is also the share of the partly-inserted zone in which the tip rests across the
+  sleeve spring (grounded, quiet) instead of floating (hum pickup).
+- Resonator: the internal feedback loop runs on 0 dB-peak modes (loop gain = feedback < 1); the output is scaled by a
+  modal gain min(Q, 8) through a soft clip, and the local-feedback loop-gain estimate includes that gain.
+- Default lane division is 1/16 (index 3); the previous default pointed at 1/16T by mistake.
+- A MIDI one-shot (note 62) starts on the exact sample of its note-on and plays one cycle of the longest lane.

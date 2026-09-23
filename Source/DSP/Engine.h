@@ -87,6 +87,9 @@ public:
     void setSeed (uint64_t s) noexcept { seedParam.store (s); }
     uint64_t getSeed() const noexcept { return seedParam.load(); }
     void setSeedLock (bool l) noexcept { seedLock.store (l); }
+    /** Take number (New Take increments it; saved in the state). */
+    void setTake (uint32_t t) noexcept { takeParam.store (t); }
+    uint32_t getTake() const noexcept { return takeParam.load(); }
     bool getSeedLock() const noexcept { return seedLock.load(); }
 
     /** Slot contents; a source can only be in one slot (duplicates are rejected). */
@@ -162,6 +165,12 @@ public:
         const bool runInternal = prm.on (P::runInternal);
 
         uint64_t baseSeed = seedParam.load();
+        if (baseSeed != mapSeedFor)
+        {
+            mapSeedFor = baseSeed;
+            for (int t = 1; t <= kNumSourceTypes; ++t)
+                sources[t]->mapSeed = hash3 (baseSeed, (uint64_t) t, 0x3A9ull);
+        }
         if (hostPlaying && ! wasHostPlaying)
         {
             if (! seedLock.load()) ++takeCounter;
@@ -177,7 +186,10 @@ public:
                 fullReset (tr.hostSeconds, 1);       // seek forwards
         }
         wasHostPlaying = hostPlaying;
-        const uint64_t seedEff = seedLock.load() ? baseSeed : hashCombine (baseSeed, (uint64_t) takeCounter);
+        // effective stream seed = (Seed, Take); the wear maps depend on Seed only, so New Take
+        // keeps timing, positions and fault maps but draws different micro-events
+        const uint32_t take = takeParam.load() + (seedLock.load() ? 0u : takeCounter);
+        const uint64_t seedEff = take == 0 ? baseSeed : hashCombine (baseSeed, (uint64_t) take);
         if (seedEff != currentSeed)
         {
             currentSeed = seedEff;
@@ -277,9 +289,10 @@ public:
         ss.studioSend = prm[P::studioSend];
         ss.fill = prm.on (P::fill) || fillHeld;
         int numLaneEvents = 0;
-        const bool laneActive = (prm.on (P::laneOn) || oneShotActive) && clockRunning;
+        bool laneActive = (prm.on (P::laneOn) || oneShotActive) && clockRunning;
         if (laneActive)
-            numLaneEvents = scheduleLane (pattern, ss, ppqStart, numSamples, samplesPerBeat, fs, laneEvents.data(), kMaxEvents);
+            numLaneEvents = scheduleLane (pattern, ss, ppqStart, oneShotActive ? oneShotSamplesLeft (ppqStart, numSamples, samplesPerBeat, ss.stepBeats) : numSamples,
+                                          samplesPerBeat, fs, laneEvents.data(), kMaxEvents);
 
         StudioBlockInfo sbi;
         sbi.bpm = bpm;
@@ -291,8 +304,7 @@ public:
         sbi.resonatorNote = lastNote;
         studio.setParams (prm, sbi);
 
-        const float humPeakCap = limit (limits::backgroundCeiling, policy);
-        const float budget = limit (limits::noiseBudget, policy);
+        const float humPeakCap = std::min (limit (limits::backgroundCeiling, policy), limit (limits::noiseBudget, policy));
         const float reactAmt = prm[P::react];
         const float reactThr = dbToGain (prm[P::reactThresh]);
         const int presetGesture[2] = { prm.choice (P::gestureA), prm.choice (P::gestureB) };
@@ -311,6 +323,8 @@ public:
         float pk[8] {};
         int laneIdx = 0, evIdx = 0;
         const int64_t blockStartSample = (int64_t) std::llround (ppqStart * samplesPerBeat);
+        int64_t barOrigin = blockStartSample;
+        oneShotStartSample = 0;
         const double samplesPerBar = samplesPerBeat * beatsPerBar;
 
         for (int i = 0; i < numSamples; ++i)
@@ -321,10 +335,27 @@ public:
             while (evIdx < numEvents && events[evIdx].offset <= i)
                 handleControlEvent (events[evIdx++], presetGesture, chaos, policy);
 
+            // a MIDI one-shot pattern started inside this block: its step 0 lands on this sample
+            if (oneShotStartPending)
+            {
+                oneShotStartPending = false;
+                oneShotStartSample = i;
+                clockRunning = true;
+                laneActive = true;
+                barOrigin = -(int64_t) i;
+                numLaneEvents = scheduleLane (pattern, ss, 0.0, oneShotSamplesLeft (0.0, numSamples - i, samplesPerBeat, ss.stepBeats),
+                                              samplesPerBeat, fs, laneEvents.data(), kMaxEvents);
+                for (int k = 0; k < numLaneEvents; ++k)
+                    laneEvents[(size_t) k].sampleOffset += i;
+                laneIdx = 0;
+                while (laneIdx < numLaneEvents && laneEvents[(size_t) laneIdx].sampleOffset <= i)
+                    handleLaneEvent (laneEvents[(size_t) laneIdx++], presetGesture, chaos, policy, prm, beatsPerBar);
+            }
+
             // bar re-keying of the random sub-streams while a clock runs
             if (clockRunning)
             {
-                const int64_t bar = (int64_t) std::floor ((double) (blockStartSample + i) / samplesPerBar + 1.0e-9);
+                const int64_t bar = (int64_t) std::floor ((double) (barOrigin + i) / samplesPerBar + 1.0e-9);
                 if (bar != lastBar)
                 {
                     lastBar = bar;
@@ -559,7 +590,7 @@ public:
         if (internalRunning) internalPpq += numSamples / samplesPerBeat;
         if (oneShotActive)
         {
-            oneShotPpq += numSamples / samplesPerBeat;
+            oneShotPpq += (numSamples - oneShotStartSample) / samplesPerBeat;
             int longest = 1;
             for (const auto& l : pattern.lanes) longest = std::max (longest, l.length);
             if (oneShotPpq >= longest * ss.stepBeats)
@@ -619,6 +650,15 @@ public:
 
 private:
     //==========================================================================
+    /** A one-shot plays exactly one cycle of the longest lane: never schedule past its end. */
+    int oneShotSamplesLeft (double ppqStart, int numSamples, double samplesPerBeat, double stepBeats) const noexcept
+    {
+        int longest = 1;
+        for (const auto& l : pattern.lanes) longest = std::max (longest, l.length);
+        const double left = (longest * stepBeats - ppqStart) * samplesPerBeat;
+        return std::clamp ((int) std::ceil (left - 1.0e-6), 0, numSamples);
+    }
+
     void triggerSlot (int s, GestureKind k, float intensity, float target, float durSec, float chaos, uint64_t var, Policy policy) noexcept
     {
         if (slotType[s] == SourceType::None) return;
@@ -680,6 +720,7 @@ private:
                 else if (n == 62)
                 {
                     oneShotActive = true;
+                    oneShotStartPending = true;
                     oneShotPpq = 0.0;
                     lastBar = -1;
                 }
@@ -706,7 +747,7 @@ private:
                 if (noteSlots[n] & 1) gen[0].release();
                 if (noteSlots[n] & 2) gen[1].release();
                 noteSlots[n] = 0;
-                if (n == 62) oneShotActive = false;   // documented note-off policy: stop at once
+                if (n == 62) { oneShotActive = false; oneShotStartPending = false; }   // documented note-off policy: stop at once
                 if (n == 63) fillHeld = false;
                 break;
             }
@@ -885,8 +926,9 @@ private:
 
     std::atomic<uint64_t> seedParam { 0x1F2E3D4Cull };
     std::atomic<bool> seedLock { true };
-    uint64_t currentSeed = 0;
+    uint64_t currentSeed = 0, mapSeedFor = ~0ull;
     uint32_t takeCounter = 0;
+    std::atomic<uint32_t> takeParam { 0 };
 
     PatternExchange exchange;
     Pattern pattern;
@@ -894,7 +936,8 @@ private:
     std::array<LaneEvent, kMaxEvents> laneEvents {};
 
     // clocks
-    bool wasHostPlaying = false, internalRunning = false, oneShotActive = false, fillHeld = false;
+    bool wasHostPlaying = false, internalRunning = false, oneShotActive = false, fillHeld = false, oneShotStartPending = false;
+    int oneShotStartSample = 0;
     double lastPpqEnd = 0.0, internalPpq = 0.0, oneShotPpq = 0.0;
     int64_t lastBar = -1;
 

@@ -85,7 +85,7 @@ struct Harness
                 if (e.offset >= absolute + pos && e.offset < absolute + pos + len)
                 {
                     auto c = e;
-                    c.offset -= absolute + pos;
+                    c.offset -= (int) (absolute + pos);
                     ev.push_back (c);
                 }
             float* cap[2] = { nullptr, nullptr };

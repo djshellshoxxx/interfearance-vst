@@ -83,7 +83,7 @@ X(ptBias,      "pt_bias",     "Circuit Bias",      F, 0, 1, 0, 0, "%", "", "DC a
 X(ptVibration, "pt_vibe",     "Vibration",         F, 0, 1, 0, 0, "%", "", "External vibration. Only a severely dirty pot stays intermittent while held still.") \
 /* --- Gesture lane / Machine Pattern --- */ \
 X(laneOn,      "lane_on",     "Gesture Lane",      B, 0, 1, 0, 0, "", "", "Run the Gesture Lane / Machine Pattern. Off by default.") \
-X(laneDiv,     "lane_div",    "Step Division",     C, 0, 6, 4, 0, "", "1/4|1/8|1/8T|1/16|1/16T|1/32|1/32T", "Length of one lane step.") \
+X(laneDiv,     "lane_div",    "Step Division",     C, 0, 6, 3, 0, "", "1/4|1/8|1/8T|1/16|1/16T|1/32|1/32T", "Length of one lane step.") \
 X(swing,       "swing",       "Swing",             F, 0, 0.5f, 0, 0, "%", "", "Delays offbeat gesture starts. Crackles themselves are never quantized.") \
 X(density,     "density",     "Density",           F, 0, 1, 1, 0, "%", "", "Probability scale of eligible gestures. Never unconditional noise.") \
 X(evolve,      "evolve",      "Evolve",            F, 0, 1, 0, 0, "%", "", "Per-bar seeded variation of gesture choice and probability.") \

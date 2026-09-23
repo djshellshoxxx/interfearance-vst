@@ -36,7 +36,6 @@ public:
 
     void seed (uint64_t s) noexcept override
     {
-        seedValue = s;
         contact.seed (hashCombine (s, 0x1A));
         axial.seed (hashCombine (s, 0x1B));
         lateral.seed (hashCombine (s, 0x1C));
@@ -54,7 +53,7 @@ public:
         popAmount = p[P::jkPop];
         shield = p[P::jkShield];
         WearMap::Settings ws;
-        ws.seed = hashCombine (seedValue, 0x3A);
+        ws.seed = hashCombine (mapSeed, 0x3A);
         ws.wear = p[P::jkWear];
         ws.centre = p[P::jkWearPos];
         ws.width = 0.1f;
@@ -158,7 +157,6 @@ public:
     }
 
 private:
-    uint64_t seedValue = 1;
     MotionDriver axial, lateral;
     ContactModel contact;
     ChargeCircuit charge;

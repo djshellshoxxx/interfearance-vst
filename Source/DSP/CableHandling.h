@@ -42,7 +42,6 @@ public:
 
     void seed (uint64_t s) noexcept override
     {
-        seedValue = s;
         conductor.seed (hashCombine (s, 0x3A));
         shieldC.seed (hashCombine (s, 0x3B));
         flex.seed (hashCombine (s, 0x3C));
@@ -60,7 +59,7 @@ public:
         intermit = p[P::cbIntermit];
         dist = disturbance;
         WearMap::Settings ws;
-        ws.seed = hashCombine (seedValue, 0x4A);
+        ws.seed = hashCombine (mapSeed, 0x4A);
         ws.wear = 1.0f; // map shape; damage amounts scale it per fault path
         ws.centre = p[P::cbWeakPos];
         ws.width = 0.07f;
@@ -175,7 +174,6 @@ public:
     }
 
 private:
-    uint64_t seedValue = 1;
     MotionDriver flex;
     ContactModel conductor, shieldC;
     WearMap weak;

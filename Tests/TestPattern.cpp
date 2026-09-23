@@ -189,7 +189,7 @@ IFX_TEST (Pattern, laneGesturesLandInTimeWithEngine)
     h.setSlots (SourceType::LooseJack, SourceType::CableHandling);
     h.publish (basic());
     h.runSilence ((int) (kFs * 2)); // 4 beats
-    IFX_CHECK (h.engine->telemetry.slot[0].gestures.load() == 4);
+    IFX_CHECK_MSG (h.engine->telemetry.slot[0].gestures.load() == 4, juce::String ((int) h.engine->telemetry.slot[0].gestures.load()));
     IFX_CHECK (h.engine->telemetry.slot[1].gestures.load() >= 5);
 }
 
@@ -228,7 +228,7 @@ IFX_TEST (Pattern, internalClockRunsWithoutHost)
     h.publish (basic());
     h.runSilence ((int) (kFs * 2));
     IFX_CHECK (h.engine->telemetry.internalClock.load());
-    IFX_CHECK (h.engine->telemetry.slot[0].gestures.load() == 4);
+    IFX_CHECK_MSG (h.engine->telemetry.slot[0].gestures.load() == 4, juce::String ((int) h.engine->telemetry.slot[0].gestures.load()));
 }
 
 IFX_TEST (Pattern, midiOneShotPatternAndNoteOffPolicy)
@@ -239,6 +239,6 @@ IFX_TEST (Pattern, midiOneShotPatternAndNoteOffPolicy)
     h.pendingEvents.push_back ({ 100, ControlEvent::NoteOn, 62, 1.0f });
     h.runSilence ((int) (kFs * 3));
     const auto g1 = h.engine->telemetry.slot[0].gestures.load();
-    IFX_CHECK (g1 == 4);   // one 16-step cycle at the default tempo, then stops
+    IFX_CHECK_MSG (g1 == 4, juce::String ((int) g1));   // one 16-step cycle at the default tempo, then stops
     h.pendingEvents.clear();
 }

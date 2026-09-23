@@ -136,6 +136,10 @@ public:
 
     SourceTelemetry tele;
 
+    /** Seed of the persistent wear / weak-spot map. Derived from the user Seed only (never
+        from the take or the bar-keyed random streams) so the fault map stays put. */
+    uint64_t mapSeed = 1;
+
 protected:
     void setBandwidth (Policy p) noexcept
     {

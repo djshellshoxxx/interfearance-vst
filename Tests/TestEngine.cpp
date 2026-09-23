@@ -513,3 +513,4 @@ IFX_TEST (Engine, bypassedSlotAdvancesTimeSilently)
     const auto evWhileBypassed = h.engine->telemetry.slot[0].openEvents.load() + h.engine->telemetry.slot[0].resistiveEvents.load();
     IFX_CHECK (evWhileBypassed > 0); // the physical clock advanced
 }
+
