@@ -304,12 +304,23 @@ void OutputStrip::resized()
     auto meters = r.removeFromRight (56);
     inMeter.setBounds (meters.removeFromLeft (28).reduced (3, 0));
     outMeter.setBounds (meters.reduced (3, 0));
-    auto top = r.removeFromTop (84);
+    // compact layout (choices side by side, shorter knobs) when the strip is short, e.g. at minimum editor size
+    const bool compact = r.getHeight() < 84 + 44 + 44 + 66 + 30;
+    auto top = r.removeFromTop (compact ? 78 : 84);
     mix.setBounds (top.removeFromLeft (top.getWidth() / 2));
     out.setBounds (top);
-    monitor.setBounds (r.removeFromTop (44).reduced (2));
-    mixLaw.setBounds (r.removeFromTop (44).reduced (2));
-    auto row = r.removeFromTop (66);
+    if (compact)
+    {
+        auto choices = r.removeFromTop (44);
+        monitor.setBounds (choices.removeFromLeft (choices.getWidth() / 2).reduced (2));
+        mixLaw.setBounds (choices.reduced (2));
+    }
+    else
+    {
+        monitor.setBounds (r.removeFromTop (44).reduced (2));
+        mixLaw.setBounds (r.removeFromTop (44).reduced (2));
+    }
+    auto row = r.removeFromTop (compact ? 60 : 66);
     dryTrim.setBounds (row.removeFromLeft (row.getWidth() / 2));
     ceiling.setBounds (row);
     auto b = r.removeFromTop (30);

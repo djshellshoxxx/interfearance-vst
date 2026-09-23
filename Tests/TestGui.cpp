@@ -195,7 +195,8 @@ IFX_TEST (Host, resetRandomizeAndAB)
     r.proc->resetToDefaults();
     const auto init = FactoryPresets::initState();
     for (int i = 0; i < kNumParams; ++i)
-        IFX_CHECK_MSG (std::abs (r.proc->getCurrentState().params[i] - init.params[i]) < 1e-4f, paramInfo (i).id);
+        IFX_CHECK_MSG (std::abs (r.proc->getCurrentState().params[i] - init.params[i]) < 1e-4f * std::max (1.0f, std::abs (init.params[i])),
+                       paramInfo (i).id); // relative: log-skewed ranges round-trip through float normalisation
     IFX_CHECK (! r.proc->isModified());
     // A/B
     r.proc->loadFactoryPreset (3);
@@ -226,7 +227,8 @@ IFX_TEST (Gui, editorOpensRendersAndResizes)
         e->setSize (w, h);
         pump (50);
         juce::StringArray bad;
-        IFX_CHECK_MSG (allChildrenInside (*e, bad), juce::String (w) + "x" + juce::String (h) + ": " + bad.joinIntoString ("; "));
+        const bool inside = allChildrenInside (*e, bad);
+        IFX_CHECK_MSG (inside, juce::String (w) + "x" + juce::String (h) + ": " + bad.joinIntoString ("; "));
         saveSnapshot (*e, "main_" + juce::String (w) + "x" + juce::String (h));
     }
 }
