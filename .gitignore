@@ -1,2 +1,7 @@
 
 .claude/ralph-loop.local.md
+
+/build/
+/build-*/
+/JUCE/
+*.wav
