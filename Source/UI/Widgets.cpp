@@ -286,11 +286,11 @@ bool MomentaryParamButton::keyPressed (const juce::KeyPress& k)
     return juce::TextButton::keyPressed (k);
 }
 
-bool MomentaryParamButton::keyStateChanged (bool isKeyDown)
+bool MomentaryParamButton::keyStateChanged (bool keyIsDown)
 {
-    if (! isKeyDown && held && ! juce::KeyPress::isKeyCurrentlyDown (juce::KeyPress::spaceKey))
+    if (! keyIsDown && held && ! juce::KeyPress::isKeyCurrentlyDown (juce::KeyPress::spaceKey))
         set (false);
-    return juce::TextButton::keyStateChanged (isKeyDown);
+    return juce::TextButton::keyStateChanged (keyIsDown);
 }
 
 //==============================================================================

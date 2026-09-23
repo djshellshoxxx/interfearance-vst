@@ -221,7 +221,7 @@ void InterferenceProcessor::pullUiEvents (int numSamples) noexcept
     juce::ignoreUnused (numSamples);
     int start1, size1, start2, size2;
     uiFifo.prepareToRead (uiFifo.getNumReady(), start1, size1, start2, size2);
-    auto take = [this] (int start, int size)
+    auto drain = [this] (int start, int size)
     {
         for (int i = 0; i < size && numEvents < kMaxEvents; ++i)
         {
@@ -230,8 +230,8 @@ void InterferenceProcessor::pullUiEvents (int numSamples) noexcept
             events[numEvents++] = e;
         }
     };
-    take (start1, size1);
-    take (start2, size2);
+    drain (start1, size1);
+    drain (start2, size2);
     uiFifo.finishedRead (size1 + size2);
 }
 

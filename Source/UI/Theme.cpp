@@ -40,16 +40,16 @@ namespace Theme
     juce::Font monoFont (float size)   { return make (monoFamily(), size, false); }
     juce::Font bodyFont (float size)   { return make (sansFamily(), size, false); }
 
-    void drawLabel (juce::Graphics& g, const juce::String& text, juce::Rectangle<int> area, juce::Justification j, juce::Colour c, float size)
+    void drawLabel (juce::Graphics& g, const juce::String& label, juce::Rectangle<int> area, juce::Justification j, juce::Colour c, float size)
     {
         auto f = labelFont (size);
         f.setExtraKerningFactor (0.08f);
         g.setFont (f);
         g.setColour (c);
-        g.drawFittedText (text.toUpperCase(), area, j, 1, 0.8f);
+        g.drawFittedText (label.toUpperCase(), area, j, 1, 0.8f);
     }
 
-    void drawSectionHeader (juce::Graphics& g, const juce::String& text, juce::Rectangle<int> area)
+    void drawSectionHeader (juce::Graphics& g, const juce::String& title, juce::Rectangle<int> area)
     {
         g.setColour (accent);
         g.fillRect (juce::Rectangle<float> ((float) area.getX(), (float) area.getCentreY() - 6.0f, 2.0f, 12.0f));
@@ -57,7 +57,7 @@ namespace Theme
         f.setExtraKerningFactor (0.08f);
         g.setFont (f);
         g.setColour (Theme::text);
-        g.drawText (text.toUpperCase(), area.withTrimmedLeft (8), juce::Justification::centredLeft, true);
+        g.drawText (title.toUpperCase(), area.withTrimmedLeft (8), juce::Justification::centredLeft, true);
     }
 
     void drawShadow (juce::Graphics& g, juce::Rectangle<float> r, float radius)

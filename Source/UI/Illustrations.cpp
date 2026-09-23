@@ -144,7 +144,7 @@ bool Illustration::keyPressed (const juce::KeyPress& k)
     }
     if (k == juce::KeyPress::spaceKey)
     {
-        const int g = proc.apvts.getRawParameterValue (paramInfo (slot == 0 ? P::gestureA : P::gestureB).id)->load();
+        const int g = (int) proc.apvts.getRawParameterValue (paramInfo (slot == 0 ? P::gestureA : P::gestureB).id)->load();
         lastGestureMs = 0.0;
         sendGesture ((GestureKind) g, 0.8f);
         return true;
