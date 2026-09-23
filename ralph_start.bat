@@ -128,35 +128,57 @@ exit /b 0
 rem ============================================================
 rem  PowerShell section: never run by cmd (every path above exits first).
 rem  Read and executed by the :trust step. Marks this folder as trusted
-rem  in %USERPROFILE%\.claude.json. Backs the file up first.
+rem  in %USERPROFILE%\.claude.json (case-sensitive parse). Backs it up first.
 rem ============================================================
 #PS1START#
 try {
     $cfg  = Join-Path $env:USERPROFILE '.claude.json'
     $proj = $env:RALPH_PROJ.TrimEnd('\')
     $fwd  = $proj -replace '\\', '/'
-    $keys = @($fwd, $proj) | Select-Object -Unique
+    $keys = [System.Collections.Generic.List[string]]::new()
+    foreach ($k in @($fwd, ($fwd.Substring(0,1).ToLower() + $fwd.Substring(1)), $proj)) {
+        if (-not $keys.Contains($k)) { $keys.Add($k) }
+    }
 
     if (-not (Test-Path $cfg)) {
         Write-Host '[WARN] ~/.claude.json not found (Claude never run on this PC?). Trust prompt may appear once.'
         return
     }
 
-    $json = [IO.File]::ReadAllText($cfg) | ConvertFrom-Json
-    if (-not $json.PSObject.Properties['projects']) {
-        $json | Add-Member -NotePropertyName projects -NotePropertyValue ([pscustomobject]@{})
+    $raw = [IO.File]::ReadAllText($cfg)
+
+    # Case-sensitive JSON parse (the config has keys that differ only by case)
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        $json = $raw | ConvertFrom-Json -AsHashtable -Depth 100
+        $toText   = { param($o) $o | ConvertTo-Json -Depth 100 }
+        $fromText = { param($t) $null = $t | ConvertFrom-Json -AsHashtable -Depth 100 }
+    } else {
+        Add-Type -AssemblyName System.Web.Extensions
+        $js = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+        $js.MaxJsonLength  = [int]::MaxValue
+        $js.RecursionLimit = 1000
+        $json = $js.DeserializeObject($raw)
+        $toText   = { param($o) $js.Serialize($o) }
+        $fromText = { param($t) $null = $js.DeserializeObject($t) }
     }
+
+    if (-not ($json.Keys -ccontains 'projects')) {
+        $json['projects'] = New-Object 'System.Collections.Generic.Dictionary[string,object]'
+    }
+    $projects = $json['projects']
 
     $changed = $false
     foreach ($k in $keys) {
-        $p = $json.projects.PSObject.Properties[$k]
-        if ($p) {
-            if ($p.Value.hasTrustDialogAccepted -ne $true) {
-                $p.Value | Add-Member -NotePropertyName hasTrustDialogAccepted -NotePropertyValue $true -Force
+        if ($projects.Keys -ccontains $k) {
+            $entry = $projects[$k]
+            if ($entry['hasTrustDialogAccepted'] -ne $true) {
+                $entry['hasTrustDialogAccepted'] = $true
                 $changed = $true
             }
         } else {
-            $json.projects | Add-Member -NotePropertyName $k -NotePropertyValue ([pscustomobject]@{ hasTrustDialogAccepted = $true })
+            $entry = New-Object 'System.Collections.Generic.Dictionary[string,object]'
+            $entry['hasTrustDialogAccepted'] = $true
+            $projects[$k] = $entry
             $changed = $true
         }
     }
@@ -166,8 +188,8 @@ try {
         return
     }
 
-    $out = $json | ConvertTo-Json -Depth 100
-    $null = $out | ConvertFrom-Json
+    $out = & $toText $json
+    & $fromText $out
     Copy-Item $cfg "$cfg.ralph-backup" -Force
     [IO.File]::WriteAllText($cfg, $out, (New-Object System.Text.UTF8Encoding $false))
     Write-Host '[OK]   Folder marked as trusted (backup: .claude.json.ralph-backup)'
