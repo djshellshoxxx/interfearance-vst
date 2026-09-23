@@ -137,10 +137,10 @@ set(IFX_TEST_SOURCES
     Tests/TestEngine.cpp
     Tests/TestStudio.cpp
     Tests/TestPattern.cpp
+    Tests/TestState.cpp
+    Tests/TestRender.cpp
+    ${IFX_SHARED_SOURCES}
 )
-if(IFX_HAVE_PLUGIN)
-    list(APPEND IFX_TEST_SOURCES ${IFX_SHARED_SOURCES} Tests/TestState.cpp Tests/TestRender.cpp)
-endif()
 target_sources(InterferenceTests PRIVATE ${IFX_TEST_SOURCES})
 target_include_directories(InterferenceTests PRIVATE Source)
 target_link_libraries(InterferenceTests PRIVATE ${IFX_MODULES}

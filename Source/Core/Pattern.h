@@ -28,7 +28,14 @@ struct LaneStep
     float probability = 1.0f; // 0..1
     float offset = 0.0f;      // microtiming, fraction of a step -0.5..0.5
 
-    bool operator== (const LaneStep& o) const noexcept { return std::memcmp (this, &o, sizeof (LaneStep)) == 0; }
+    // field-wise: memcmp would also compare indeterminate padding bytes
+    bool operator== (const LaneStep& o) const noexcept
+    {
+        return active == o.active && gesture == o.gesture && accent == o.accent && ratchet == o.ratchet && choke == o.choke
+            && intensity == o.intensity && duration == o.duration && target == o.target && send == o.send
+            && probability == o.probability && offset == o.offset;
+    }
+    bool operator!= (const LaneStep& o) const noexcept { return ! (*this == o); }
 };
 
 struct Lane
@@ -36,6 +43,14 @@ struct Lane
     int length = 16;          // 1..64
     uint8_t mute = 0, solo = 0;
     LaneStep steps[kMaxSteps];
+
+    bool operator== (const Lane& o) const noexcept
+    {
+        if (length != o.length || mute != o.mute || solo != o.solo) return false;
+        for (int i = 0; i < kMaxSteps; ++i)
+            if (steps[i] != o.steps[i]) return false;
+        return true;
+    }
 };
 
 struct Pattern
@@ -73,7 +88,13 @@ struct Pattern
             l.steps[i] = tmp[i];
     }
 
-    bool operator== (const Pattern& o) const noexcept { return std::memcmp (this, &o, sizeof (Pattern)) == 0; }
+    bool operator== (const Pattern& o) const noexcept
+    {
+        for (int i = 0; i < kNumLanes; ++i)
+            if (! (lanes[i] == o.lanes[i])) return false;
+        return true;
+    }
+    bool operator!= (const Pattern& o) const noexcept { return ! (*this == o); }
 };
 
 /** Single-writer (message thread) / single-reader (audio thread) exchange of the pattern.
