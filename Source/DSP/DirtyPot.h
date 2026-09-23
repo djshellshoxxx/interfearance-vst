@@ -108,7 +108,8 @@ public:
         const float q = wiper.q;
         const float speed = std::abs (wiper.v);
         const float W = wear.wearAt (q);
-        const float motion = std::min (1.0f, speed / 0.3f);
+        // deliberate turning only: vibration of a still knob is handled by the `severe` term
+        const float motion = std::min (1.0f, std::min (speed, std::abs (wiper.vIntent)) / 0.3f);
         const float maxRate = limit (limits::maxEventRate, policy);
 
         ContactModel::Inputs in;

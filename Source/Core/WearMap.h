@@ -66,7 +66,7 @@ public:
         const float d = (q - s.centre) / w;
         float bump = std::exp (-0.5f * d * d * 2.2f);
         // lumps inside the region so a worn arc has 2-3 distinguishable rough spots
-        const float lumps = 0.55f + 0.45f * valueNoise (hashCombine (s.seed, 0x77ull), q, 23);
+        const float lumps = 0.7f + 0.3f * valueNoise (hashCombine (s.seed, 0x77ull), q, 23);
         bump *= lumps;
         const float ageing = s.background * (0.5f + 0.5f * valueNoise (hashCombine (s.seed, 0x99ull), q, 11));
         return std::clamp (s.wear * (bump + ageing), 0.0f, 1.0f);

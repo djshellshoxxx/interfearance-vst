@@ -110,7 +110,10 @@ public:
         gain = tipG * sleeveG;
 
         const bool shorted = contact.isShorted();
-        exposure = shorted ? 0.0f : (1.0f - tipG) * (0.45f + 0.55f * (1.0f - sleeveG)) * (1.0f - 0.95f * shield);
+        // In the partly inserted zone the tip can rest across the sleeve spring: `Short` is also
+        // the share of that zone spent grounded (quiet) instead of floating (hum pickup).
+        const float groundedShare = shortProb * z * 0.8f;
+        exposure = shorted ? 0.0f : (1.0f - tipG) * (0.45f + 0.55f * (1.0f - sleeveG)) * (1.0f - 0.95f * shield) * (1.0f - groundedShare);
         bright = 1.0f - sleeveG;
         popValue = charge.process (tipG * sleeveG, popAmount * limit (limits::popPeak, policy), limit (limits::popPeak, policy));
 

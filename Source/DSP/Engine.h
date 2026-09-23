@@ -67,6 +67,7 @@ public:
         env.prepare (fs);
         studio.prepare (fs, maxBlock);
         smoothCoeff = (float) std::exp (-1.0 / (0.01 * fs));
+        rampStep = (float) (1.0 / (0.01 * fs));
         slowCoeff = (float) std::exp (-1.0 / (0.05 * fs));
         for (auto& b : passive) b.reset();
         excLp.setCutoff (1500.0, fs);
@@ -385,8 +386,7 @@ public:
                 src[s] = sources[(int) slotType[s]];
                 src[s]->control (g[s], ctx);
                 const float target = slotOn[s] ? 1.0f : 0.0f;
-                slotMix[s] = target + (slotMix[s] - target) * smoothCoeff;
-                if (std::abs (slotMix[s] - target) < 1.0e-5f) slotMix[s] = target;
+                slotMix[s] = rampTo (slotMix[s], target);
             }
 
             // shared noise budget (probabilistic union instead of summing two hum pickups)
@@ -457,8 +457,7 @@ public:
 
             // Studio branch
             const float sTarget = studioOn ? 1.0f : 0.0f;
-            studioMix = sTarget + (studioMix - sTarget) * smoothCoeff;
-            if (std::abs (studioMix - sTarget) < 1.0e-5f) studioMix = sTarget;
+            studioMix = rampTo (studioMix, sTarget);
             if (studioMix > 0.0f)
             {
                 float s[2] = { F[0] * sendGain, F[nch - 1] * sendGain };
@@ -473,8 +472,7 @@ public:
 
             // Raw Hardware and slot-change / order declick
             const float rTarget = rawHw ? 1.0f : 0.0f;
-            rawMix = rTarget + (rawMix - rTarget) * smoothCoeff;
-            if (std::abs (rawMix - rTarget) < 1.0e-5f) rawMix = rTarget;
+            rawMix = rampTo (rawMix, rTarget);
             updateFades (slotChangePending, swap);
 
             for (int ch = 0; ch < nch; ++ch)
@@ -506,10 +504,11 @@ public:
                 const float bTarget = bypass ? 1.0f : 0.0f;
                 if (ch == 0)
                 {
-                    bypassMix = bTarget + (bypassMix - bTarget) * smoothCoeff;
-                    if (std::abs (bypassMix - bTarget) < 1.0e-5f) bypassMix = bTarget;
+                    bypassMix = rampTo (bypassMix, bTarget);
                 }
-                if (bypassMix > 0.0f)
+                if (bypassMix >= 1.0f)
+                    o = x[ch];
+                else if (bypassMix > 0.0f)
                     o = o + bypassMix * (x[ch] - o);
                 // numeric failsafe only (invalid values), never routine colouring
                 if (! std::isfinite (o)) o = 0.0f;
@@ -791,6 +790,13 @@ private:
         passiveNorm = d0; // unity DC gain: no level jump when switching circuit mode
     }
 
+    /** Fixed-length (10 ms) linear declick ramp: reaches its target exactly, so bypass
+        identities are exact once a switch has settled. */
+    float rampTo (float v, float target) const noexcept
+    {
+        return v < target ? std::min (target, v + rampStep) : std::max (target, v - rampStep);
+    }
+
     void updateFades (bool slotChangePending, bool swap) noexcept
     {
         const float step = (float) (1.0 / (0.005 * fs));
@@ -893,7 +899,7 @@ private:
     int64_t lastBar = -1;
 
     // smoothing / state
-    float smoothCoeff = 0.99f, slowCoeff = 0.999f;
+    float smoothCoeff = 0.99f, slowCoeff = 0.999f, rampStep = 0.002f;
     float trim = 1.0f, excGain = 0.0f, studioMix = 0.0f, rawMix = 0.0f, bypassMix = 0.0f, ceilGain = 1.0f;
     float slotMix[2] { 1.0f, 1.0f };
     float orderFade = 1.0f, slotFade = 1.0f;

@@ -26,6 +26,8 @@ public:
     {
         pos = (double) position;
         vel = acc = 0.0;
+        intentPos = pos;
+        vIntent = 0.0f;
         microTarget = microA = microB = 0.0;
         microCounter = 0;
         q = position;
@@ -57,6 +59,16 @@ public:
         microA += (microTarget - microA) * mc;
         microB += (microA - microB) * mc;
 
+        // intended motion only (command + gesture, no micro-motion): lets a source tell a
+        // deliberate turn from vibration
+        {
+            const double intent = std::clamp ((double) target + (double) gesture, (double) lo, (double) hi);
+            const double ic = 1.0 - std::exp (-2.0 * 3.14159265358979 * 25.0 * dt);
+            const double prev = intentPos;
+            intentPos += (intent - intentPos) * ic;
+            vIntent = (float) ((intentPos - prev) * fs);
+        }
+
         const double desired = std::clamp ((double) target + (double) gesture + microB * (double) microDepth * (double) micro, (double) lo, (double) hi);
 
         // critically damped follower (~25 Hz) with speed / acceleration caps
@@ -80,10 +92,11 @@ public:
     float q = 0.5f;   // position
     float v = 0.0f;   // velocity (1/s)
     float a = 0.0f;   // acceleration (1/s^2)
+    float vIntent = 0.0f; // velocity of the deliberate (non micro-motion) command
 
 private:
     double fs = 48000.0, dt = 1.0 / 48000.0;
-    double pos = 0.5, vel = 0.0, acc = 0.0;
+    double pos = 0.5, vel = 0.0, acc = 0.0, intentPos = 0.5;
     double microTarget = 0.0, microA = 0.0, microB = 0.0;
     int microCounter = 0;
     float lastV = 0.0f;

@@ -62,6 +62,7 @@ public:
             fbLine[ch].allocate (maxFb);
         }
         stageSmooth = (float) std::exp (-1.0 / (0.01 * fs));
+        stageStep = (float) (1.0 / (0.01 * fs));
         reset();
     }
 
@@ -149,6 +150,9 @@ public:
             res2[ch].bandpass (f2, q2, fs);
         }
         resFb = std::min (0.9f, p[P::rsFeedback]);
+        // modal gain: a 0 dB-peak band-pass barely rings on clicks, so the peak gain grows
+        // with Q up to +18 dB; the tanh stage below bounds sustained excitation
+        resGain = (float) std::clamp (q1, 1.0, 8.0);
 
         // Echo
         double echoSec = p[P::ecTime] * 0.001;
@@ -171,7 +175,7 @@ public:
         }
         double loopGain = 1.0;
         if (on[Drive]) loopGain *= (double) drivePre * (double) drivePost;
-        if (on[Resonator]) loopGain *= 1.0 / (1.0 - resFb);
+        if (on[Resonator]) loopGain *= (double) resGain / (1.0 - resFb);
         const float requested = p[P::fbAmount];
         fbTarget = (float) std::min ((double) requested, 0.97 / std::max (1.0, loopGain));
         fbLimited = requested > 0.0f && fbTarget < requested - 1.0e-4f;
@@ -210,7 +214,7 @@ public:
     {
         const auto& p = *prm;
         for (int s = 0; s < NumStages; ++s)
-            stageMix[s] = (on[s] ? 1.0f : 0.0f) + (stageMix[s] - (on[s] ? 1.0f : 0.0f)) * stageSmooth;
+            stageMix[s] = on[s] ? std::min (1.0f, stageMix[s] + stageStep) : std::max (0.0f, stageMix[s] - stageStep);
 
         // feedback return ramps
         const bool killNow = killFb || (chokeActive && chokeKillsFb);
@@ -260,7 +264,7 @@ public:
             {
                 float e = v;
                 for (auto& b : eq[ch]) e = b.process (e);
-                v += stageMix[EQ] * wet[EQ] * (e - v);
+                v = mixTo (v, e, stageMix[EQ] * wet[EQ]);
             }
 
             // 2 Contour
@@ -274,7 +278,7 @@ public:
                     const float t = std::clamp (d / 12.0f, 0.0f, 1.0f);
                     const float gDb = std::clamp (t * ctAtt + (1.0f - t) * ctSus, -24.0f, 12.0f);
                     ctGain[ch] += (dbToGain (gDb) - ctGain[ch]) * 0.01f;
-                    v += stageMix[Contour] * wet[Contour] * (v * ctGain[ch] - v);
+                    v = mixTo (v, v * ctGain[ch], stageMix[Contour] * wet[Contour]);
                 }
             }
 
@@ -289,7 +293,7 @@ public:
                 float d = sat[ch].process (v * drivePre);
                 d = driveDc[ch].process (d);
                 d = toneLp[ch].lp (d) * drivePost;
-                v += stageMix[Drive] * wet[Drive] * (d - v);
+                v = mixTo (v, d, stageMix[Drive] * wet[Drive]);
             }
             else
                 sat[ch].reset();
@@ -304,7 +308,7 @@ public:
                         h += (float) ((ditherRng.uniform() - ditherRng.uniform()) * crushStep * dither);
                     holdVal[ch] = std::round (h / crushStep) * crushStep;
                 }
-                v += stageMix[Crush] * wet[Crush] * (holdVal[ch] - v);
+                v = mixTo (v, holdVal[ch], stageMix[Crush] * wet[Crush]);
             }
 
             // Auto Match (bounded, slow)
@@ -324,10 +328,12 @@ public:
             if (stageMix[Resonator] > 1.0e-4f)
             {
                 const float in = v + resFbState[ch] * resFb;
-                float r = res1[ch].process (in) + 0.7f * res2[ch].process (in);
-                r = std::tanh (r * 0.8f) / 0.8f;
-                resFbState[ch] = r;
-                v += stageMix[Resonator] * wet[Resonator] * (r * tailRamp - v);
+                // the internal loop runs on the 0 dB-peak modes (loop gain = resFb < 1);
+                // only the output is scaled by the modal gain
+                const float m = std::tanh ((res1[ch].process (in) + 0.7f * res2[ch].process (in)) * 0.8f) / 0.8f;
+                resFbState[ch] = m;
+                const float r = std::tanh (m * resGain * 0.5f) * 2.0f;
+                v = mixTo (v, r * tailRamp, stageMix[Resonator] * wet[Resonator]);
             }
 
             // feedback tap: after Resonator, before Gate
@@ -365,6 +371,12 @@ public:
         (void) p;
     }
 
+    /** Crossfade that is exact at both ends (k = 1 returns the target bit-for-bit). */
+    static float mixTo (float v, float target, float k) noexcept
+    {
+        return k >= 1.0f ? target : v + k * (target - v);
+    }
+
     float effectiveFeedback() const noexcept { return fbTarget; }
     bool feedbackLimited() const noexcept { return fbLimited; }
     bool stageOn (int s) const noexcept { return on[s]; }
@@ -385,7 +397,7 @@ private:
     bool on[NumStages] {};
     float wet[NumStages] {};
     float stageMix[NumStages] {};
-    float stageSmooth = 0.99f;
+    float stageSmooth = 0.99f, stageStep = 0.002f;
 
     Biquad eq[2][5];
     float envFast[2] {}, envSlow[2] {}, ctGain[2] { 1, 1 }, ctAtt = 0, ctSus = 0;
@@ -397,7 +409,7 @@ private:
     double holdPhase = 0.0, holdInc = 1.0;
     Rng ditherRng;
     Biquad res1[2], res2[2];
-    float resFb = 0, resFbState[2] {};
+    float resFb = 0, resFbState[2] {}, resGain = 1;
     DelayLine echo[2];
     OnePole echoLp[2];
     double echoDelay = 1000;

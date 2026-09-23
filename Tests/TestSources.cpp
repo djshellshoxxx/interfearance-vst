@@ -39,7 +39,7 @@ juce::AudioBuffer<float> sweep (Harness& h, int param, float from, float to, dou
             in.clear();
         auto o = h.run (in);
         for (int ch = 0; ch < h.channels; ++ch)
-            out.copyFrom (ch, 0, o, ch, 0, len);
+            out.copyFrom (ch, pos, o, ch, 0, len);
     }
     return out;
 }
@@ -161,7 +161,7 @@ IFX_TEST (LooseJack, popNeedsBias)
         auto out = sweep (s.h, P::jkInsert, 1.0f, 0.5f, 2.0);
         IFX_CHECK (s.events() > 0);
         if (k == 0) IFX_CHECK_MSG (peakOf (out) < 1e-6f, "silent circuit without bias must stay silent");
-        else        IFX_CHECK (peakOf (out) > 1e-3f && peakOf (out) <= limit (limits::popPeak, Policy::Natural) + 1e-3f);
+        else        IFX_CHECK_MSG (peakOf (out) > 1e-3f && peakOf (out) <= limit (limits::popPeak, Policy::Natural) + 1e-3f, "peak " + juce::String (peakOf (out)));
     }
 }
 
@@ -248,7 +248,7 @@ IFX_TEST (PlugTouch, humOffLeavesOnlyBriefContactEvents)
     s.h.params[P::tcPop] = 0.0f;
     s.h.params[P::tcPressure] = 0.2f;
     auto out = sweep (s.h, P::tcTouch, 0.0f, 1.0f, 1.0);
-    IFX_CHECK (peakOf (out) < 1e-6f); // no hum source, no bias: touch alone is silent
+    IFX_CHECK_MSG (peakOf (out) < 1e-6f, "peak " + juce::String (peakOf (out))); // no hum source, no bias: touch alone is silent
 }
 
 // =============================================================================
@@ -464,3 +464,4 @@ IFX_TEST (DirtyPot, taperLawsAreMonotoneAndDistinct)
     IFX_CLOSE (DirtyPot::taperLaw (0.5f, 1), 0.1, 1e-3);
     IFX_CLOSE (DirtyPot::taperLaw (0.5f, 2), 0.9, 1e-3);
 }
+
