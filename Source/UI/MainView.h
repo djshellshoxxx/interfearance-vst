@@ -1,0 +1,89 @@
+#pragma once
+
+#include "SlotPanel.h"
+#include "LaneEditor.h"
+#include "StudioPanel.h"
+#include "Overlays.h"
+
+namespace ifx
+{
+
+/** The single-window layout (master spec 8): header, mode + source row, two slot columns
+    with functional illustrations, context controls, bottom tabs (lane / Studio / Create /
+    routing) and the output strip. A 30 Hz timer copies engine telemetry into the views. */
+class MainView final : public juce::Component, private juce::Timer
+{
+public:
+    explicit MainView (InterferenceProcessor& p);
+    ~MainView() override;
+
+    void paint (juce::Graphics& g) override;
+    void resized() override;
+    bool keyPressed (const juce::KeyPress& k) override;
+
+    std::function<void (bool)> onTooltipsChanged;
+
+    // exposed for GUI tests
+    void showHelp();
+    void showOptions();
+    void showRender();
+    void closeOverlay();
+    juce::Component* currentOverlay() const noexcept { return overlay.get(); }
+    void selectTab (int index);
+    int getSelectedTab() const noexcept { return tab; }
+    void selectSlot (int s);
+    void toggleRecord();
+
+private:
+    void timerCallback() override;
+    void rebuildIllustrations();
+    void refreshPresetBox();
+    void showMainMenu();
+    void savePresetAs();
+    void openPreset();
+    void setOverlay (std::unique_ptr<Overlay> o);
+    void updateHeader();
+    void layoutStream();
+
+    InterferenceProcessor& proc;
+
+    // header
+    OutputLed led;
+    juce::TextButton menuButton { "Menu" }, prevPreset { "<" }, nextPreset { ">" }, aButton { "A" }, bButton { "B" }, copyAB { "A>B" },
+                     resetButton { "Reset" }, randomButton { "Randomize" }, helpButton { "?" }, gearButton;
+    juce::ComboBox presetBox;
+    juce::Array<juce::File> userPresets;
+
+    // mode row
+    juce::TextButton modeButtons[3];
+    SourcePalette palette;
+    juce::Label seedLabel;
+    juce::TextButton lockButton { "Lock" }, takeButton { "New Take" };
+    ParamChoice policy;
+
+    // slots
+    SlotCard cards[2];
+    std::unique_ptr<Illustration> illus[2];
+    SourceType illusType[2] { SourceType::None, SourceType::None };
+    ContextPanel context;
+    int selectedSlot = 0;
+
+    // bottom
+    juce::TextButton tabButtons[4];
+    LaneEditor lane;
+    StudioPanel studio;
+    CreatePanel create;
+    RoutingView routing;
+    OutputStrip output;
+    int tab = 1;
+    int lastMode = -1;
+
+    DataStream stream;
+    std::unique_ptr<Overlay> overlay;
+    std::unique_ptr<juce::FileChooser> chooser;
+    int lastDirty = -1;
+    juce::String headerName;
+    bool modified = false;
+};
+
+} // namespace ifx

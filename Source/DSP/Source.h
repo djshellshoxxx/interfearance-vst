@@ -59,6 +59,28 @@ inline GestureKind patternGesture (SourceType t, int index) noexcept
     }
 }
 
+/** Seed of a source's persistent fault map, from the user Seed only. */
+inline uint64_t mapSeedFor (uint64_t userSeed, SourceType t) noexcept { return hash3 (userSeed, (uint64_t) t, 0x3A9ull); }
+
+/** The fault-map settings of each source: shared by the DSP and the illustrations, so the
+    worn arc / weak spot drawn on screen is exactly the one the engine uses. */
+inline WearMap::Settings wearSettingsFor (SourceType t, uint64_t mapSeed, const ParamSnapshot& p) noexcept
+{
+    WearMap::Settings ws;
+    switch (t)
+    {
+        case SourceType::LooseJack:
+            ws.seed = hashCombine (mapSeed, 0x3A); ws.wear = p[P::jkWear]; ws.centre = p[P::jkWearPos]; ws.width = 0.1f; ws.background = 0.08f; break;
+        case SourceType::CableHandling:
+            ws.seed = hashCombine (mapSeed, 0x4A); ws.wear = 1.0f; ws.centre = p[P::cbWeakPos]; ws.width = 0.07f; ws.background = 0.04f; break;
+        case SourceType::DirtyPot:
+            ws.seed = hashCombine (mapSeed, 0x5A); ws.wear = p[P::ptDirt]; ws.centre = p[P::ptWearPos]; ws.width = p[P::ptWearWidth]; ws.background = 0.06f; break;
+        default:
+            ws.wear = 0.0f; break;
+    }
+    return ws;
+}
+
 /** Why a source may be quiet (realism spec 7): bit flags, highest priority first. */
 enum QuietReason : uint32_t
 {

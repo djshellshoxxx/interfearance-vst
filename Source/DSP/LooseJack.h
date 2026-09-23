@@ -52,12 +52,7 @@ public:
         shortProb = p[P::jkShort];
         popAmount = p[P::jkPop];
         shield = p[P::jkShield];
-        WearMap::Settings ws;
-        ws.seed = hashCombine (mapSeed, 0x3A);
-        ws.wear = p[P::jkWear];
-        ws.centre = p[P::jkWearPos];
-        ws.width = 0.1f;
-        ws.background = 0.08f;
+        const auto ws = wearSettingsFor (SourceType::LooseJack, mapSeed, p);
         wear.update (ws);
         setBandwidth (policy);
     }

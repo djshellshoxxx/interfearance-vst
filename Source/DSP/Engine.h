@@ -165,11 +165,11 @@ public:
         const bool runInternal = prm.on (P::runInternal);
 
         uint64_t baseSeed = seedParam.load();
-        if (baseSeed != mapSeedFor)
+        if (baseSeed != mapSeedBase)
         {
-            mapSeedFor = baseSeed;
+            mapSeedBase = baseSeed;
             for (int t = 1; t <= kNumSourceTypes; ++t)
-                sources[t]->mapSeed = hash3 (baseSeed, (uint64_t) t, 0x3A9ull);
+                sources[t]->mapSeed = mapSeedFor (baseSeed, (SourceType) t);
         }
         if (hostPlaying && ! wasHostPlaying)
         {
@@ -926,7 +926,7 @@ private:
 
     std::atomic<uint64_t> seedParam { 0x1F2E3D4Cull };
     std::atomic<bool> seedLock { true };
-    uint64_t currentSeed = 0, mapSeedFor = ~0ull;
+    uint64_t currentSeed = 0, mapSeedBase = ~0ull;
     uint32_t takeCounter = 0;
     std::atomic<uint32_t> takeParam { 0 };
 

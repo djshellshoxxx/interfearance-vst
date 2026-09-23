@@ -58,12 +58,7 @@ public:
         mic = p[P::cbMic];
         intermit = p[P::cbIntermit];
         dist = disturbance;
-        WearMap::Settings ws;
-        ws.seed = hashCombine (mapSeed, 0x4A);
-        ws.wear = 1.0f; // map shape; damage amounts scale it per fault path
-        ws.centre = p[P::cbWeakPos];
-        ws.width = 0.07f;
-        ws.background = 0.04f;
+        const auto ws = wearSettingsFor (SourceType::CableHandling, mapSeed, p);
         weak.update (ws);
         setBandwidth (policy);
     }

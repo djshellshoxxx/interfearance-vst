@@ -63,12 +63,7 @@ public:
         bias = p[P::ptBias];
         vibration = p[P::ptVibration] * disturbance;
         dist = disturbance;
-        WearMap::Settings ws;
-        ws.seed = hashCombine (mapSeed, 0x5A);
-        ws.wear = dirt;
-        ws.centre = p[P::ptWearPos];
-        ws.width = p[P::ptWearWidth];
-        ws.background = 0.06f;
+        const auto ws = wearSettingsFor (SourceType::DirtyPot, mapSeed, p);
         wear.update (ws);
         setBandwidth (policy);
     }
