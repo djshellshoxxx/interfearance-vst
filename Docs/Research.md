@@ -14,9 +14,11 @@ Each entry is labelled:
 
 ## What was available
 
-This was an unattended build without institutional library access. For every paper only the **abstract and
-bibliographic record** were read (publisher or repository page, or a search-engine abstract where the page refused
-automated access). No full text was used. The table says what was available for each paper.
+This was an unattended build without institutional library access. For the papers behind the four source models
+(the first seven rows) only the **abstract and bibliographic record** were read (publisher or repository page, or a
+search-engine abstract where the page refused automated access); no full text was used for them. The later additions
+(environment, RF and handling, and the Studio chain provenance) used the full text wherever it was openly
+available. The table says what was available for each source.
 
 | Paper | Available | Used for |
 |---|---|---|
@@ -27,6 +29,20 @@ automated access). No full text was used. The table says what was available for 
 | Mudd 2023 | Abstract (CHI '23) | Play/Create: local unpredictability |
 | Elia, Overholt 2024 | Abstract (Audio Mostly '24, ACM) | Stored, recalled and sequenced gestures |
 | Parker, Zavalishin, Le Bivic 2016 | Abstract (DAFx-16) | Antialiased (ADAA) saturation |
+| Whitlock: Jensen AN-003, AN-004, *Understanding, Finding & Eliminating Ground Loops* (2005); Whitlock & Fox, AES 129 (2010) | Full text (Jensen PDFs) | Hum colour, ground loop, interface rejection, dimmer buzz; RF sources and symptoms |
+| EN 50160:2007 | Full text (sections 4.1, 4.11) | Mains frequency tolerance, harmonic limits |
+| ETC, *Risetime and Lamp Noise* | Full web page | Dimmer rise times |
+| Claesson, Rossholm, *Notch Filtering of Humming GSM Mobile Telephone Noise* | Full text | 2G phone burst pattern |
+| Brown, *RFI in Audio Systems* (Audio Systems Group) | Full text (slide paper PDF) | Square-law detection, cell-phone and RF coupling |
+| Hall, Kuehl, *EMI Rejection Ratio of Operational Amplifiers* (TI SBOA128A) | Full text | Quadratic RF-to-offset relation (square law) |
+| Keithley, *Low Level Measurements Handbook*, section 2 | Full text (chapter PDF) | Triboelectric and piezoelectric charge in cables |
+| FEMTO, *Low-noise cables*; IEEE femtocoulomb triboelectric noise meter | Search-engine summary / abstract only | Triboelectric noise bandwidth and low-noise cable construction |
+| Doyle, *From 4AD To Nine Inch Nails* (Sound On Sound, January 2006) | Full web article (automated page fetch) | Studio chain: Drive, heavy compression / Contour, "anything is an instrument" |
+| Buskin, *Classic Tracks: Nine Inch Nails 'Closer'* (Sound On Sound, September 2012) | Full web article (automated page fetch) | Studio chain: Drive, Contour, Crush (grit), Rhythm Gate / Machine Pattern |
+| West, Caramiaux, Huot, Wanderley 2021 | Abstract (NIME 2021 proceedings page; the full text on nime.pubpub.org refused automated access, HTTP 403) | Machine Pattern: balance of control, comprehensible mappings |
+| Dal Santo, Pi, Prawda, Schlecht, Välimäki 2026 | Full text (DAFx-26 PDF) | Local feedback: nonlinearity inside a bounded, energy-controlled loop |
+
+Full references and URLs for the environment, RF and handling sources are in `Docs/research/ElectricalInterference.md`.
 
 ## Sources
 
@@ -103,7 +119,7 @@ Continuous-Time Convolution.* DAFx-16, Brno. https://www.dafx.de/paper-archive/d
   transitions use short band-limited ramps instead of hard switches.
 - *Artistic:* **Digital Crush** aliases on purpose. It is labelled as a Studio effect.
 
-### Environment: hum colour, ground loops, dimmers and phones
+### Environment: hum colour, ground loops, dimmers, phones, RF and handling
 
 The environment models come from a separate, deeper research pass, `Docs/research/ElectricalInterference.md`.
 That note labels every claim and lists what could be read in full for each source. Main sources:
@@ -139,8 +155,104 @@ What each model uses:
   band-pass, and a steep distance law (detected power falls as the square of the field). *Artistic:* the call-state
   sequencing (check-in, incoming, in call) and the ±3 dB power drift.
 
+- **RF interference: square-law detection.** *Observed:* audio circuits turn RF into audio because diodes,
+  transistors and IC inputs are square-law detectors; "a 10 dB reduction in RF level reduces audible interference by
+  20 dB" (Brown, *RFI in Audio Systems*). An op-amp's input-referred offset shift grows with the square of the RF
+  amplitude (TI SBOA128A). Symptoms range from audible radio or voices to buzz (Whitlock, 2005).
+  *Inference:* the detected audio is k·e(t)², where e(t) is the envelope of the RF at the gear, followed by the
+  detecting stage's DC coupling (20 Hz) and its band limit (two poles). *Interference* is the RF field strength a
+  (RF level 20·log10 a dB); the environment's waveform scales with a and the source's coupling scales with a again,
+  so the injected level follows a². Ten dB less RF is exactly 20 dB less noise. At radio frequencies the cable
+  capacitance, not the audio source, sets the node impedance, so RF is not scaled by *Source Circuit*.
+  *Artistic:* the three band limits (AM 4.5 kHz, two-way 3 kHz, motor 7 kHz), the output normalisation and the
+  20 ms smoothing of the amount.
+- **RF transmitter types.** *Observed:* broadcast (AM, shortwave), two-way and CB radios, and sparks from brush
+  motors, relays and switches are common RF sources (Whitlock, 2005, section 5.1). GSM phones are 100 % AM,
+  217 Hz pulses (Brown).
+  *Inference:* the transmitters differ only in e(t).
+  **AM Station**: a continuous carrier with slow fading, amplitude-modulated by a programme.
+  **Two-Way Radio** (default): keyed transmissions of 30–250 ms with gaps of 0.12–1.3 s, modulated by band-limited
+  chatter while keyed. Key up and key down become thumps after the DC coupling, because the detected carrier power is
+  a step. The traffic does not depend on the field strength.
+  **Motor Sparks**: Poisson spark impulses whose rate wanders between 60 and 250 per second. The detected energy of
+  each spark (A²·τ/2, τ = 50 µs) is added directly, which keeps the crackle independent of the sample rate.
+  *Artistic:* the AM programme is **synthetic and never intelligible**: noise-excited ("whispered") two-formant
+  syllables at 2.5–7 Hz in phrases of 3–9 with 0.15–0.6 s pauses. There are no pitch pulses, so there is no tonal
+  line. The formant table is a generic set of adult vowel formants, not taken from a cited measurement. Also artistic:
+  the two-way timing (chosen to keep the character of the earlier "sparse chatter"), the spark rate range and
+  amplitude distribution, and the 10 ms fade when the transmitter type changes.
+- **Triboelectric handling (Cable Handling, Mic path).** *Observed:* friction between a cable's conductor, dielectric
+  and shield separates charge (triboelectric effect); deformation also releases stored charge (Keithley, section 2).
+  Low-noise cables add a semi-conductive layer; the noise extends from quasi-DC up to about 100 kHz (FEMTO, search
+  summary only).
+  *Inference:* the separated charge is a current into the conductor node. Below the node's RC corner
+  (node impedance × cable capacitance) the voltage is proportional to the node impedance. With a passive source
+  (~50 kΩ across the band) the friction crackle is heard, and a larger *Cable Load* lowers the corner, so the crackle
+  gets darker. A buffered or line source (~1 kΩ) holds it down by about 34 dB and pushes the corner far above the
+  audio band, so *Cable Load* no longer matters. The realism spec (section 5) requires a sealed cable with *Mic* at
+  zero to make no handling sound, so this term exists only with *Mic*, inside the same bounded handling path
+  (capped by `mechanicalPeak`).
+  *Artistic:* the charge-to-voltage scale (0.33, set by ear) and the 50 kΩ passive node, an estimate from typical
+  pickup impedances (Lemme) and consumer output impedances (Jensen AN-003).
+
 None of these numbers were measured on real gear for this release. They are starting points, like every other
 default.
+
+### Studio chain and Machine Pattern: provenance (routing and industrial-performance specs)
+
+These sources motivate the **Studio** effects and the Machine Pattern. None of them describes, or is claimed to
+describe, this plug-in, an artist's signature sound, or a measured machine. The Studio stages are labelled as
+processing, never as hardware physics.
+
+**Doyle, T. (2006).** *From 4AD To Nine Inch Nails* (interview with John Fryer). Sound On Sound, January 2006.
+https://www.soundonsound.com/people/4ad-nine-inch-nails
+
+**Buskin, R. (2012).** *Classic Tracks: Nine Inch Nails 'Closer'*. Sound On Sound, September 2012.
+https://www.soundonsound.com/techniques/classic-tracks-nine-inch-nails-closer
+
+- *Observed:* Fryer: "if it's power noise stuff, I distort the hell out of everything"; heavy compression ("you can
+  really over-compress stuff"); "if it made a noise, it was an instrument". For 'Closer', engineer Sean Beavan
+  describes a snare sample run through an SSL console "for some distortion" and a Zoom 9030 "for a little bit of
+  ring modulation", fast-attack compression as the snare sound, a kick sampled from an 808 part where he "removed the
+  noise but retained the grit", and a drum pattern built by running parts out of samplers through outboard gear.
+- *Inference:* a fixed, labelled Studio chain that processes only the **fault artifacts or breaks** (A, D, or both),
+  never the dry input: **Drive** (Soft / Hard / Asymmetric, antialiased) for deliberate distortion, **Contour** as a
+  fast transient/sustain shaper in place of fast-attack compression, **Crush** (bits and hold rate, deliberately
+  aliasing) for sampler grit, and the **Rhythm Gate** plus Machine Pattern for rhythmic, sequenced treatment of the
+  faults. Ring modulation is **not** a Studio stage: the tuned **Resonator** gives a metallic, pitched colour
+  instead, and the only ring modulator is the hidden Ghost Carrier, off by default and outside the chain.
+- *Artistic:* stage order, ranges and every default. The four Machine Pattern factory presets use generic names and do
+  not imitate a named artist.
+
+**West, T., Caramiaux, B., Huot, S., Wanderley, M. M. (2021).** *Making Mappings: Design Criteria for Live
+Performance.* NIME 2021, Shanghai. https://nime.org/proc/nime2021_31/index.html (DOI 10.21428/92fbeb44.04f0fc35)
+
+- *Observed (abstract):* in a thematic analysis of interviews with two groups of participants, "mappings must manage
+  the balance of control between the instrument and the player, and they should be easy to understand for the player
+  and audience".
+- *Inference:* Machine Pattern shares control. The player sequences **gesture starts**, probability, accent and
+  targets, while the hardware model keeps the micro-events. Every step is a named, source-aware gesture (for example
+  Wiggle, Seat, Pull), and the Studio stages are shown as processing, so the mapping stays readable for performer and
+  audience. This complements Mudd (2023) and Elia and Overholt (2024) above.
+- *Artistic:* the lane layout, step fields and Fill / Evolve behaviour.
+
+**Dal Santo, G., Pi, X., Prawda, K., Schlecht, S., Välimäki, V. (2026).** *Shimmer Reverberation with Nonlinear
+Feedback Delay Networks.* DAFx-26, Cambridge, MA, 1–4 September 2026.
+https://www.dafx.de/paper-archive/details/tLDBzbMbZN8aoERSiwvSpg
+
+- *Observed:* nonlinear and time-varying operations can be placed inside a feedback loop "while adhering to
+  energy-preservation and stability criteria". With an orthogonal feedback matrix and attenuation below 1 the loop is
+  stable, but the nonlinearity moves energy across the spectrum, so the decay is no longer set exactly by the
+  attenuation. Soft saturation is cited as a way to ensure stability (after Norilo).
+- *Inference:* the local Studio feedback loop taps after the Resonator and returns into the Drive input through a
+  high-pass, low-pass, DC blocker and a soft (tanh) saturator. Its loop gain is clamped below 0.97, **including** the
+  gains of the stages inside the loop. It is zero by default, killable (*Kill Feedback*), and its tail estimate is
+  capped at 30 s. The tail is reported as an estimate, because nonlinearity makes the decay only approximately
+  predictable.
+- *Artistic:* the loop's filters, delay range and the 0.97 margin.
+
+The routing spec also cites **Parker, Zavalishin and Le Bivic (2016)** (above) for the antialiased Drive, and the
+deliberately aliasing Crush is labelled as a Studio effect.
 
 ## Calibration status (release gate)
 
