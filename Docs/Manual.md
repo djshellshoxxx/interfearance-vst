@@ -105,6 +105,12 @@ shield admits depends on what drives the cable. A buffered / line source (Detail
 holds the conductor at low impedance, about 34 dB less hum than a passive guitar pickup (Passive Pickup). *Why
 quiet?* and the Shield Damage knob say so when it applies.
 
+The handling noise (only with Mic above 0) has two parts. Resonant rub and tap sounds come from the cable's
+mechanics. A *triboelectric* part comes from friction and impact separating charge inside the cable. That charge is
+a current into the conductor, so it depends on the source impedance. On a **Passive Pickup** source it is loud, and
+more *Cable Load* (capacitance) makes it darker. On **Buffered/Line** it is about 34 dB lower, and Cable Load does
+not change it.
+
 ### Dirty Pot
 A rotary pot on a finite track used as a Level or Tone control. Turn Knob (level/tone follow the taper even with no
 dirt), Taper (Linear, Log A, Reverse Log C), Circuit (Level, or Tone: 250 k + 22 nF treble cut), Dirt, Wear Position
@@ -144,14 +150,19 @@ floating tip) lifts the odd harmonics, so it is brighter. Hum is never retuned t
   at fully on or fully off. *Dimmer Kind* sets how fast the switch is. A **Cheap Wall** dimmer switches in
   microseconds (harsh, wide rasp). **Stage** and **TV Studio** dimmers use chokes that slow the edge (softer, darker).
 
-Like hum, buzz is heard only through exposed paths. *Interference* sets how much radio-frequency energy reaches the
-rig. *Transmitter* chooses what it comes from:
-- **AM Station**: a distant broadcast.
-- **Two-Way Radio**: keyed bursts.
-- **Motor Sparks**: commutator crackle from a motor.
+Like hum, buzz is heard only through exposed paths.
 
-The audio circuit detects RF by a square law, so a little less RF means a lot less noise. *Transmitter* is greyed
-while Interference is 0. (A fuller description follows when the transmitter models are finished.)
+**Radio interference.** *Interference* is the strength of the radio-frequency field at the gear. RF, like hum, gets
+in only through exposed paths. A junction in the audio circuit detects it: the audio it makes follows the *square*
+of the RF envelope. So the noise falls twice as fast as the field: −10 dB of RF gives −20 dB of noise, and
+*Interference* at 50 % is about 12 dB quieter than at 100 %. Each transmitter is band-limited the way a real audio
+stage would hear it. *Transmitter* chooses the source; switching fades from one to the other. It is greyed out
+while Interference is 0.
+- **AM Station**: a distant broadcast. A continuous carrier with slow fading and an unintelligible, whispered
+  programme of synthetic syllables at 2.5–7 per second, heard up to about 4.5 kHz. Never real speech or music.
+- **Two-Way Radio** (default): keyed transmissions of 30–250 ms, with a thump when the key goes down and up, and
+  voice-band chatter up to about 3 kHz.
+- **Motor Sparks**: commutator crackle from a nearby motor, 60–250 sparks per second, brighter (up to about 7 kHz).
 
 **Ground loop.** *Other Gear* connects another device to the rig. Current then flows through the cable shield, and
 that current times the shield's resistance becomes a hum voltage in series with the signal. The hum enters before

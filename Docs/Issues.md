@@ -9,7 +9,7 @@ or a documented limitation. Regression evidence names the automated test that gu
 |---|---|---|---|
 | O1 | S2 | **No DAW load test.** The VST3 passes pluginval and the headless host tests, but it has not been loaded in a real DAW on this machine (none installed). | Release gate. Steps are in `QA.md` → *Unverified gates*. |
 | O2 | S3 | **No empirical calibration.** The model ranges are listening-test starting points, not fitted to recordings. | Release gate for any "measured realism" claim. The product is described as research-informed. |
-| O3 | S3 | **1-hour soak and CPU drift** not run unattended. | Instructions in `QA.md`. The short concurrency and teardown tests pass. |
+| O3 | S3 | **Real-time host soak and memory check not run.** The offline 1-hour soak passes: 60 min of 48 kHz stereo worst-case audio with continuous automation, rendered in 437 s, 5-min segments 33–48 s with no upward drift, peak −5.6 dBFS (`Perf.soakOneHourOfAudioNoDriftFiniteBounded`, see `QA.md`). Still unverified: an hour of real-time playback in a host, and process memory over that time. | Run a 1-hour playback in a DAW while watching memory in Task Manager; see `QA.md`. |
 | O4 | S3 | Hosts that do not pass MIDI to audio effects cannot play gestures from notes. | By design: the GUI, the Trigger A/B automation and the Gesture Lane cover every MIDI function. |
 | O5 | S3 | Offline *Render WAV* uses its own tempo field, not the host tempo map, and does not include host audio. | Documented export limitation. To process track audio, use the host's bounce or *Record*. |
 | O6 | S3 | Bit-identical output is guaranteed only at the same sample rate and plug-in version. | Documented in the manual (Seed, Lock and New Take). |

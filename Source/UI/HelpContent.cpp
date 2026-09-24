@@ -93,7 +93,10 @@ namespace
             "  Shield Damage - broken braid (admits hum while the conductor stays live). Mic - handling noise pickup; 0 = a sealed cable is silent.\n"
             "  Weak Spot - location of the fault; bend over it repeatedly to find the same crackle.\n"
             "A buffered / line source (Details > Source circuit) holds the conductor at low impedance, so a broken shield picks up "
-            "about 34 dB less hum than with Passive Pickup." });
+            "about 34 dB less hum than with Passive Pickup.\n"
+            "Handling noise (Mic above 0 only) has resonant rub and tap sounds plus a triboelectric part: friction and impact "
+            "separate charge in the cable. On a Passive Pickup source it is loud and more Cable Load makes it darker; on "
+            "Buffered/Line it is about 34 dB lower and Cable Load does not change it." });
 
         s.add ({ "Dirty Pot",
             "A rotary pot on a finite track, used as a Level or Tone control.\n"
@@ -105,7 +108,8 @@ namespace
             "  Vibration - only a severely dirty pot (Dirt > 70 %) stays intermittent while held still." });
 
         s.add ({ "Two slots, order and linking",
-            "Slots A and B are processed in series: A then B, or B then A with Swap Order (Details). A downstream open contact "
+            "Slots A and B are processed in series: A then B, or B then A with Swap Order (the order button between the slot cards, "
+            "also in Details). A downstream open contact "
             "interrupts the upstream source's artifacts; a downstream pot filters them. Two sources in series can interact, but this "
             "is not a physically exact model of one combined device.\n"
             "Picking a third source asks which slot to replace; nothing is dropped silently. Choosing the other slot's source in a slot "
@@ -123,8 +127,12 @@ namespace
             "Buzz Band and Buzz Source: Supply = rectifier pulses twice per mains cycle (100/120 Hz buzz). Dimmer = a light dimmer's "
             "switching spikes twice per cycle, loudest near half brightness, silent fully on or off. Dimmer Kind: Cheap Wall "
             "switches in microseconds (harsh), Stage and TV Studio chokes are softer and darker.\n"
-            "Interference and Transmitter: how much radio energy reaches the rig and what sends it (AM Station, keyed Two-Way Radio "
-            "bursts, or Motor Sparks). The circuit detects RF by a square law, so a little less RF is a lot less noise.\n"
+            "Interference: the RF field strength at the gear, picked up through exposed paths like hum. The audio circuit detects "
+            "it by a square law, so -10 dB of RF is -20 dB of noise (50 % is about 12 dB quieter than 100 %).\n"
+            "Transmitter (greyed while Interference is 0; switching fades): AM Station = a distant broadcast, a continuous carrier "
+            "with slow fading and unintelligible whispered syllables at 2.5-7 per second (up to about 4.5 kHz). Two-Way Radio "
+            "(default) = keyed bursts of 30-250 ms with key-down / key-up thumps (voice band, about 3 kHz). Motor Sparks = "
+            "commutator crackle at 60-250 sparks per second (brighter, about 7 kHz).\n"
             "Ground loop: Other Gear makes current flow through the cable shield; current x shield resistance is hum in series with "
             "the signal, entering before the slots. 2-prong gear leaks a small current (slightly buzzy hum); Grounded gear is driven "
             "by the ground-voltage difference set by Outlets (round hum). Cable Run and Cable Shield set the resistance. Interface: "
