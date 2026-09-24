@@ -27,9 +27,23 @@ First release.
 - Hardware / Play / Create modes; gestures from buttons, illustrations, MIDI notes and a 1–64 step gesture lane.
 - Seed, Lock and New Take for repeatable bounces; bar-keyed random streams, block-size independent.
 - Studio chain (EQ, Contour, Drive, Crush, Resonator, Rhythm Gate, Echo, bounded feedback) with Raw Hardware switch.
-- Routing / monitor taps (Full, Artifacts, Direct, Circuit), mix laws, output ceiling, meters.
+- Named buses and monitor taps (Full Output, Full Core, Injected Artifacts, Fault Difference, Studio Only, Full Wet,
+  Dry Input), linear / constant-power mix, optional output ceiling, meters.
 - Offline WAV render (bars or seconds; 16/24/32-bit float; 44.1/48/96 kHz; mono/stereo; tail; normalize) and
   live record.
 - 22 factory presets in 6 categories; user presets with modified marker and A/B compare.
 - MIDI map and MIDI learn; in-plugin help, tooltips, keyboard navigation.
 - Zero latency; mono and stereo; 44.1–192 kHz.
+- Help > Debug: live data window with misconfiguration checks, opt-in crash log, troubleshooting-file export and hard
+  reset.
+- One hidden extra for the curious.
+
+### Release notes 1.0.0
+
+- **Formats:** VST3 (Windows x64) and a stand-alone Windows app. No installer: copy the bundle (see `Docs/Install.md`).
+- **Verified:** offline DSP/state/render tests, headless host and GUI tests, pluginval (see `Docs/QA.md` for the exact
+  commands and results).
+- **Not yet verified:** loading in a real DAW, empirical calibration against recordings, and a 1-hour soak. These are
+  open release gates listed in `Docs/QA.md` and `Docs/Issues.md`.
+- **Known limitations:** some hosts do not send MIDI to effects (use the GUI, automation or the lane); Render WAV uses
+  its own tempo and does not include host audio; bit-identical repeats need the same sample rate and version.

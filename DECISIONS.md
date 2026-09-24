@@ -31,3 +31,16 @@ Wubforge document and is used only for its general interaction grammar (overlays
   modal gain min(Q, 8) through a soft clip, and the local-feedback loop-gain estimate includes that gain.
 - Default lane division is 1/16 (index 3); the previous default pointed at 1/16T by mistake.
 - A MIDI one-shot (note 62) starts on the exact sample of its note-on and plays one cycle of the longest lane.
+- Build order on this machine: RAM is scarce, so documentation and code are written first and compiled in one pass at the
+  end (user request 2026-09-23); intermediate commits may be marked "not yet compiled".
+- Easter egg = "Ghost Carrier": ring modulation of the wet bus W by a slowly wandering carrier (4 appended parameters,
+  off by default, so dry, bypass and every identity are untouched). Opened by the one pixel at the tip of the header
+  notch (14, 2), with 1 px slack for high-DPI rounding. Parameters are appended at the end of the table, so IDs stay stable.
+- Crash log: opt-in and never persisted (off on every load). On Windows it chains to, and on stop restores, the host's
+  unhandled-exception filter instead of JUCE's global crash handler, which cannot be removed and would outlive the DLL.
+- Troubleshooting file and crash logs are written straight to Documents/Interference/Support with time-stamped names
+  (no file dialog) so they are easy to find and describe; the popup shows the exact location.
+- Hard reset = Reset + clear MIDI map, A/B, options, and delete the options file (the only cache). User presets, renders
+  and support files are user data and are kept.
+- Research notes use abstracts only (no full-text access in an unattended run); stated per paper in Docs/Research.md.
+- No installer: the repo has no trustworthy installer pipeline, so the release is a documented ZIP (spec 12).

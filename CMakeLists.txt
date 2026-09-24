@@ -93,7 +93,7 @@ if(IFX_HAVE_PLUGIN)
 
     juce_add_plugin(Interference
         COMPANY_NAME                "Interference Audio"
-        COMPANY_WEBSITE             "https://github.com/interference-audio/interference"
+        COMPANY_WEBSITE             "https://interference-audio.example"
         COMPANY_EMAIL               "support@interference-audio.example"
         BUNDLE_ID                   "audio.interference.interference"
         PLUGIN_MANUFACTURER_CODE    Ifrn

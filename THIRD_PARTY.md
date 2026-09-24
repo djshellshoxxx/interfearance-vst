@@ -16,6 +16,14 @@ Fonts are the operating system's own UI fonts, selected at run time (not embedde
 Full licence texts ship with JUCE: `JUCE_8_0_8/LICENSE.md`,
 `JUCE_8_0_8/modules/juce_audio_processors/format_types/VST3_SDK/LICENSE.txt` and the files it references.
 
+## Credits and attribution
+
+- Visual style: the project's own visual identity spec (`theme.md`, supplied by the publisher), covering colours,
+  typography, control shapes and meters. No external brand styling is used.
+- Research that informed the models is cited in `Docs/Research.md`. No text, figures or data from those papers are
+  included in the product.
+- Design, DSP, UI and documentation: Sheldon Davidson, with AI-assisted development (Claude, Anthropic).
+
 ## Commercial release gate (licensing)
 
 Interference is proprietary (see `LICENSE`). Shipping it closed-source therefore requires, **before sale**:
