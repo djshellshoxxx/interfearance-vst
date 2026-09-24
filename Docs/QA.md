@@ -47,3 +47,68 @@ timestamp, then verifies both, before the ZIP is made. Without the secret the jo
 are **unsigned**. It never creates or fakes a signature.
 
 CI does not run pluginval or load the plug-in in a DAW: those remain local release gates (see below).
+
+## Results (2026-09-24, Release build, commit history on `master`)
+
+### Automated tests
+
+| Suite | Binary | Tests | Result |
+|---|---|---|---|
+| Core, sources (Loose Jack, Plug Touch, Cable Handling, Dirty Pot), Engine, Studio, Pattern, State, Presets, Render, Record, Environment, Limits, Scenarios, Rf | `InterferenceTests.exe` | 168 (3 slow skipped) | **pass**, 0 failed checks |
+| Perf (slow): CPU benchmark, cost breakdown, 1 h offline soak | `InterferenceTests.exe --slow --filter Perf` | 3 | **pass** |
+| Host contract + GUI (headless editor: buses, IDs, state, MIDI/learn, reset/randomize/A-B, resize × 5 tabs, overlays, presets × source pairs, concurrency, teardown during render, record, debug tools, secret pixel) | `InterferenceGuiTests.exe` | 13 | see final run below |
+
+What the suites assert (examples, not exhaustive): silence invariant for every source pair, mode and mix; exact
+identity for bypass, empty/bypassed slots, 0 % wet and Studio off; `C = R + D + A`; block-size independence
+(64 / 257 / 333 / 401 / 997 samples); locked-seed bounce, loop and seek repeatability; all sample rates 44.1–192 kHz
+finite and bounded; NaN/Inf input sanitised; zero-length blocks; extreme-parameter fuzz; every realism-table row per
+source; every PhysicalLimits bound; pair distinctness in both orders; tempo changes and 7/8, 5/4 bars; offline render
+vs live engine; DC input and log sweeps; ceiling behaviour; declicked switches and smoothed automation; no pop without
+a contact transition; ground-loop / dimmer / 2G phone / RF transmitter physics (odd harmonics, interface rejection,
+216.7 Hz bursts, square law); WAV headers for every format; overwrite protection; bad paths; render cancellation.
+
+### CPU and latency (Intel Core i5-2520M, 2 cores / 4 threads, 2.5 GHz, 2011 laptop)
+
+Worst case = two slots + hum/buzz/RF + passive pickup + input drive + every Studio stage + feedback + ceiling +
+Ghost Carrier + lane running, stereo, 256-sample blocks, under `ScopedNoDenormals` (as in `processBlock`):
+
+| Sample rate | Share of one core | Real-time factor |
+|---|---|---|
+| 44.1 kHz | ~12 % | ~8× |
+| 48 kHz | ~12 % | ~8.5× |
+| 96 kHz | ~21 % | ~4.7× |
+| 192 kHz | ~39 % | ~2.6× |
+
+Cost breakdown at 48 kHz (quiet machine): empty slots ≈ 1.6 %, one source ≈ 2.9 %, two sources ≈ 3.8 %, + Studio
+EQ/Contour ≈ 6.9 %, everything ≈ 9 % of one core. Timings vary ±30 % with background load on this machine.
+Latency: **0 samples** in every configuration (ADAA instead of oversampling, no lookahead).
+
+### Soak (offline)
+
+60 minutes of 48 kHz stereo audio, worst case, with continuous automation (Wiggle, Bend, Dry/Wet, Drive, Resonator
+and Ghost frequency every second, Kill Feedback every 97 s): processed in 437 s; 5-minute segments took 33–48 s with
+no upward drift; output finite, peak −5.6 dBFS. **Pass.** The engine allocates only in `prepare()`, so memory is
+constant by construction; no separate memory profiler was run.
+
+### Validation, packaging, install
+
+- pluginval (Tracktion) on the Release VST3: see the final run recorded below.
+- Release ZIP: `tools/make_release.ps1` output and SHA-256 recorded below.
+- Installed to `C:\Program Files\Common Files\VST3\Interference.vst3` on this machine (FL Studio 2025 scans it).
+
+## Unverified release gates
+
+These could not be exercised unattended on this machine and are **not** claimed:
+
+1. **DAW load.** FL Studio 2025 is installed, but loading the plug-in, automating it, saving and reopening a project
+   and bouncing need a person at the keyboard. Steps: rescan plug-ins (Options → Manage plugins → Find plugins),
+   insert Interference on a mixer track, load *Ungrounded Input* and *Breathing Ground Loop*, move knobs, automate
+   Dry/Wet, save, reopen, render; confirm identical audio with Lock on.
+2. **Real-time host soak** (1 h in a DAW with the editor open) and host-side memory check.
+3. **Sidechain in a real host** (the headless host test covers the bus layout only).
+4. **Empirical calibration** against recordings of real faulty hardware (see `Research.md`): required before any
+   claim of measured realism.
+5. **Publisher items:** real homepage and support e-mail (placeholders), JUCE commercial licence and Steinberg VST3
+   licence agreement (see `THIRD_PARTY.md`), code signing certificate.
+6. **Sanitizer build** (`-DINTERFERENCE_ASAN=ON`) was not run in this session (4 GB RAM machine).
+7. **macOS / AU / Linux / CLAP**: not built.

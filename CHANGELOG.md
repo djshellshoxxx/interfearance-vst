@@ -36,16 +36,19 @@ First release.
 - Zero latency; mono and stereo; 44.1–192 kHz.
 - Help > Debug: live data window with misconfiguration checks, opt-in crash log, troubleshooting-file export and hard
   reset.
-- Environment: coupling-aware mains hum, ground loop (other gear, outlets, cable run, shield, interface), supply or
-  light-dimmer buzz, 2G phone bursts; researched in `Docs/research/ElectricalInterference.md`.
+- Environment tab: coupling-aware mains hum, ground loop (other gear, outlets, cable run, shield, interface), supply or
+  light-dimmer buzz, 2G phone bursts, RF transmitters (AM station, two-way radio, motor sparks, square-law detected);
+  researched in `Docs/research/ElectricalInterference.md`.
 - One hidden extra for the curious.
 
 ### Release notes 1.0.0
 
 - **Formats:** VST3 (Windows x64) and a stand-alone Windows app. No installer: copy the bundle (see `Docs/Install.md`).
-- **Verified:** offline DSP/state/render tests, headless host and GUI tests, pluginval (see `Docs/QA.md` for the exact
-  commands and results).
-- **Not yet verified:** loading in a real DAW, empirical calibration against recordings, and a 1-hour soak. These are
+- **Verified:** 168 offline DSP/state/render/environment tests, 13 headless host and GUI tests, a CPU benchmark
+  (about 12 % of one 2011 laptop core at 48 kHz, worst case), a 1-hour offline soak with automation, pluginval
+  (see `Docs/QA.md` for the exact commands and results). CI workflow in `.github/workflows/ci.yml`.
+- **Not yet verified:** loading in a real DAW, a real-time host soak, sidechain in a host, empirical calibration
+  against recordings, and the publisher items (homepage, support e-mail, JUCE/VST3 licences, signing). These are
   open release gates listed in `Docs/QA.md` and `Docs/Issues.md`.
 - **Known limitations:** some hosts do not send MIDI to effects (use the GUI, automation or the lane); Render WAV uses
   its own tempo and does not include host audio; bit-identical repeats need the same sample rate and version.
