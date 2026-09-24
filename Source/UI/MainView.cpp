@@ -408,12 +408,21 @@ void MainView::closeOverlay()
 void MainView::showHelp()
 {
     auto h = std::make_unique<HelpOverlay>();
-    h->onDebug = [this] { juce::AlertWindow::showAsync (juce::MessageBoxOptions().withTitle ("Debug").withMessage ("Debug tools are opened from here.").withButton ("OK"), nullptr); };
+    h->onDebug = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe) safe->showDebug(); }); };
     setOverlay (std::move (h));
 }
 
 void MainView::showOptions() { setOverlay (std::make_unique<OptionsOverlay> (proc)); }
 void MainView::showRender()  { setOverlay (std::make_unique<RenderOverlay> (proc)); }
+void MainView::showDebug()   { setOverlay (std::make_unique<DebugOverlay> (proc)); }
+void MainView::showGhost()   { setOverlay (std::make_unique<GhostOverlay> (proc)); }
+
+void MainView::mouseDown (const juce::MouseEvent& e)
+{
+    // easter egg: one exact pixel (one logical pixel of slack for high-DPI rounding)
+    if (overlay == nullptr && std::abs (e.x - kSecretX) <= 1 && std::abs (e.y - kSecretY) <= 1)
+        showGhost();
+}
 
 bool MainView::keyPressed (const juce::KeyPress& k)
 {

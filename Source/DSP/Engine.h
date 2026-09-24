@@ -271,6 +271,11 @@ public:
         const bool link = prm.on (P::linkGesture);
         const float chaos = prm[P::chaos];
         const bool slotOn[2] = { prm.on (P::slotAOn), prm.on (P::slotBOn) };
+        // hidden Ghost Carrier: ring modulation of the wet path by a slowly wandering carrier
+        const bool ghostOn = prm.on (P::ghostOn);
+        const float ghostAmt = std::clamp (prm[P::ghostMix], 0.0f, 1.0f);
+        const double ghostF = std::clamp ((double) prm[P::ghostFreq], 20.0, 2000.0);
+        const double ghostDrift = std::clamp ((double) prm[P::ghostDrift], 0.0, 1.0);
 
         // swap-order declick: fade the wet core out, swap at zero, fade back in
         if (swap != effSwap && ! orderSwitching)
@@ -501,6 +506,19 @@ public:
                 for (int ch = 0; ch < nch; ++ch) P[ch] = F[ch];
             }
 
+            ghostRamp = rampTo (ghostRamp, ghostOn ? 1.0f : 0.0f);
+            float ghostGain = 0.0f, carrier = 0.0f;
+            if (ghostRamp > 0.0f)
+            {
+                const double wander = std::sin (2.0 * kPi * ghostLfo);
+                ghostPhase += ghostF * (1.0 + 0.06 * ghostDrift * wander) / fs;
+                ghostPhase -= std::floor (ghostPhase);
+                ghostLfo += 0.23 / fs;
+                ghostLfo -= std::floor (ghostLfo);
+                carrier = (float) std::sin (2.0 * kPi * ghostPhase);
+                ghostGain = ghostRamp * ghostAmt;
+            }
+
             // Raw Hardware and slot-change / order declick
             const float rTarget = rawHw ? 1.0f : 0.0f;
             rawMix = rampTo (rawMix, rTarget);
@@ -515,6 +533,8 @@ public:
                     w = R[ch] + U[ch] + P[ch];
                 w = w + rawMix * (C[ch] - w);
                 w *= orderFade * slotFade;
+                if (ghostGain > 0.0f)
+                    w += ghostGain * (w * carrier - w);
                 W[ch] = w;
                 y[ch] = dryG * x[ch] + wetG * W[ch];
             }
@@ -893,6 +913,7 @@ private:
         env.reset (hostSeconds);
         lastBar = -1;
         chokeSamples = 0;
+        ghostPhase = ghostLfo = 0.0;
         studio.setChoke (false, false, false);
         sendTarget = sendGain = 1.0f;
         sendSamples = 0;
@@ -945,6 +966,8 @@ private:
     float smoothCoeff = 0.99f, slowCoeff = 0.999f, rampStep = 0.002f;
     float trim = 1.0f, excGain = 0.0f, studioMix = 0.0f, rawMix = 0.0f, bypassMix = 0.0f, ceilGain = 1.0f;
     float slotMix[2] { 1.0f, 1.0f };
+    float ghostRamp = 0.0f;
+    double ghostPhase = 0.0, ghostLfo = 0.0;
     float orderFade = 1.0f, slotFade = 1.0f;
     bool orderSwitching = false, orderReturning = false, effSwap = false;
     float inputLevel = 0.0f;

@@ -3,6 +3,7 @@
 #include "TestFramework.h"
 #include "Plugin/PluginProcessor.h"
 #include "Plugin/PluginEditor.h"
+#include "Plugin/Diagnostics.h"
 #include <thread>
 
 using namespace ifx;
@@ -360,4 +361,88 @@ IFX_TEST (Gui, recordWhileProcessingThenStop)
     IFX_CHECK (r.proc->recorder().stop() == 50 * 512);
     IFX_CHECK (f.getSize() > 50 * 512 * 6);
     f.deleteFile();
+}
+
+IFX_TEST (Gui, debugToolsCrashLogHardResetAndSecretPixel)
+{
+    Rig r;
+    std::unique_ptr<juce::AudioProcessorEditor> ed (r.proc->createEditor());
+    auto* e = dynamic_cast<InterferenceEditor*> (ed.get());
+    if (e == nullptr) { IFX_CHECK (false); return; }
+    e->setSize (InterferenceEditor::kDefaultW, InterferenceEditor::kDefaultH);
+    auto& v = e->view();
+
+    // the hidden panel opens only from its one pixel
+    auto click = [&v] (int x, int y)
+    {
+        const juce::Point<float> p ((float) x, (float) y);
+        const auto now = juce::Time::getCurrentTime();
+        juce::MouseEvent me (juce::Desktop::getInstance().getMainMouseSource(), p, {}, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                             &v, &v, now, p, now, 1, false);
+        v.mouseDown (me);
+    };
+    click (MainView::kSecretX + 6, MainView::kSecretY + 6);
+    pump (20);
+    IFX_CHECK (v.currentOverlay() == nullptr);
+    click (MainView::kSecretX, MainView::kSecretY);
+    pump (40);
+    IFX_CHECK (dynamic_cast<GhostOverlay*> (v.currentOverlay()) != nullptr);
+    saveSnapshot (*e, "overlay_ghost");
+    v.closeOverlay();
+
+    // debug window: live data and misconfiguration checks
+    r.proc->param (P::mix)->setValueNotifyingHost (0.0f);
+    v.showDebug();
+    pump (80);
+    auto* d = dynamic_cast<DebugOverlay*> (v.currentOverlay());
+    IFX_CHECK (d != nullptr);
+    if (d == nullptr) return;
+    saveSnapshot (*e, "overlay_debug");
+    IFX_CHECK (d->currentLiveText().contains ("PARAMETERS"));
+    IFX_CHECK (d->currentLiveText().contains ("Dry/Wet is 0 %"));
+    r.proc->param (P::mix)->setValueNotifyingHost (1.0f);
+
+    // troubleshooting file: self-test passes, carries version and settings
+    juce::File tf;
+    juce::String err;
+    IFX_CHECK_MSG (Diagnostics::writeTroubleshootingFile (*r.proc, tf, err), err);
+    const auto report = tf.loadFileAsString();
+    IFX_CHECK (report.contains ("[PASS]") && ! report.contains ("[FAIL]"));
+    IFX_CHECK (report.contains (IFX_VERSION_STRING) && report.contains ("jk_insert"));
+    tf.deleteFile();
+
+    // crash log: off on load, starts with a troubleshooting file, records activity, closes cleanly
+    IFX_CHECK (! r.proc->isCrashLogging());
+    d->setCrashLog (true);
+    IFX_CHECK (r.proc->isCrashLogging());
+    const auto logFile = CrashLog::currentFile();
+    r.proc->param (P::hum)->setValueNotifyingHost (0.9f);
+    pump (900); // the processor timer appends activity about twice a second
+    d->setCrashLog (false);
+    IFX_CHECK (! r.proc->isCrashLogging());
+    const auto log = logFile.loadFileAsString();
+    IFX_CHECK (log.contains ("troubleshooting file") && log.contains ("Hum =") && log.contains ("closed normally"));
+    logFile.deleteFile();
+
+    // hard reset clears MIDI mappings and options (the user's options file is restored afterwards)
+    const auto settingsFile = r.proc->settings().getFile();
+    const bool hadSettings = settingsFile.existsAsFile();
+    const auto savedSettings = settingsFile.loadFileAsString();
+    r.proc->startMidiLearn (P::jkWiggle);
+    juce::AudioBuffer<float> b (2, 256);
+    b.clear();
+    juce::MidiBuffer cc;
+    cc.addEvent (juce::MidiMessage::controllerEvent (1, 21, 64), 0);
+    r.proc->processBlock (b, cc);
+    pump (120);
+    IFX_CHECK (r.proc->getMidiMap().size() == 1);
+    r.proc->setTooltipsEnabled (false);
+    r.proc->param (P::ghostOn)->setValueNotifyingHost (1.0f);
+    d->performHardReset();
+    IFX_CHECK (r.proc->getMidiMap().isEmpty());
+    IFX_CHECK (r.proc->tooltipsEnabled());
+    IFX_CHECK (r.proc->apvts.getRawParameterValue ("ghost_on")->load() < 0.5f);
+    v.closeOverlay();
+    if (hadSettings)
+        settingsFile.replaceWithText (savedSettings);
 }

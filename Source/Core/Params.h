@@ -158,7 +158,12 @@ X(dryTrim,     "dry_trim",    "Dry Trim",          F, -24, 6, 0, 0, "dB", "", "D
 X(outTrim,     "outtrim",     "Output",            F, -24, 12, 0, 0, "dB", "", "Output level after the mix.") \
 X(monitor,     "monitor",     "Monitor",           C, 0, 6, 0, 0, "", "Full Output|Full Core|Injected Artifacts|Fault Difference|Studio Only|Full Wet|Dry Input", "Which named bus leaves the plugin. Changes nothing inside the model.") \
 X(ceilOn,      "ceil_on",     "Ceiling",           B, 0, 1, 0, 0, "", "", "Optional zero-latency output ceiling (audible limiting).") \
-X(ceiling,     "ceiling",     "Ceiling Level",     F, -24, 0, -0.3f, 0, "dB", "", "Output ceiling level.")
+X(ceiling,     "ceiling",     "Ceiling Level",     F, -24, 0, -0.3f, 0, "dB", "", "Output ceiling level.") \
+/* --- hidden: Ghost Carrier (easter egg; appended in 1.0.0) --- */ \
+X(ghostOn,     "ghost_on",    "Ghost Carrier",     B, 0, 1, 0, 0, "", "", "Secret hidden effect: a stray radio carrier ring-modulates the wet path. Off by default.") \
+X(ghostFreq,   "ghost_freq",  "Ghost Frequency",   F, 20, 2000, 110, 1, "Hz", "", "Secret hidden effect: carrier frequency of the Ghost Carrier.") \
+X(ghostDrift,  "ghost_drift", "Ghost Drift",       F, 0, 1, 0.25f, 0, "%", "", "Secret hidden effect: slow, repeatable wander of the carrier (an unstable transmitter).") \
+X(ghostMix,    "ghost_mix",   "Ghost Amount",      F, 0, 1, 0.5f, 0, "%", "", "Secret hidden effect: how much of the wet path is ring-modulated.")
 
 enum P : int
 {

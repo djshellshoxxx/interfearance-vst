@@ -20,6 +20,11 @@ public:
     void paint (juce::Graphics& g) override;
     void resized() override;
     bool keyPressed (const juce::KeyPress& k) override;
+    void mouseDown (const juce::MouseEvent& e) override;
+
+    /** The one pixel that reveals the hidden Ghost Carrier panel: the upper tip of the
+        signature notch in the top-left corner. */
+    static constexpr int kSecretX = 14, kSecretY = 2;
 
     std::function<void (bool)> onTooltipsChanged;
 
@@ -27,6 +32,8 @@ public:
     void showHelp();
     void showOptions();
     void showRender();
+    void showDebug();
+    void showGhost();
     void closeOverlay();
     juce::Component* currentOverlay() const noexcept { return overlay.get(); }
     void selectTab (int index);

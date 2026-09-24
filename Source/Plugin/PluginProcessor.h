@@ -110,6 +110,13 @@ public:
 
     /** Parameter-change / event messages for the editor's data stream (message thread). */
     juce::StringArray drainActivity();
+    /** The same messages for other readers (debug window, crash log): lines after `cursor`. */
+    juce::StringArray activitySince (juce::int64& cursor) const;
+
+    // Help > Debug: opt-in crash log (off every time the plug-in loads, never saved)
+    bool startCrashLog (juce::File& written, juce::String& error);
+    void stopCrashLog();
+    bool isCrashLogging() const;
 
     std::atomic<int> uiDirty { 0 }; // bumps when non-parameter state changes (editor refresh)
 
@@ -167,7 +174,10 @@ private:
 
     // parameter activity for the data stream
     float lastValues[kNumParams] {};
-    juce::StringArray activity;
+    juce::StringArray activity, history;
+    juce::int64 historyEnd = 0;   // number of lines ever added to history
+    juce::int64 crashCursor = 0;
+    int crashTicks = 0;
     juce::CriticalSection activityLock; // message thread only (never the audio thread)
     uint32_t lastLogRead = 0;
 

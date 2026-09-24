@@ -1,4 +1,5 @@
 #include "Overlays.h"
+#include "Plugin/Diagnostics.h"
 #include <thread>
 #if JucePlugin_Build_Standalone && ! IFX_HEADLESS
  #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
@@ -206,6 +207,197 @@ void OptionsOverlay::layoutContent (juce::Rectangle<int> r)
     r.removeFromTop (12);
     mapTitle.setBounds (r.removeFromTop (22));
     mappings.setBounds (r);
+}
+
+//==============================================================================
+DebugOverlay::DebugOverlay (InterferenceProcessor& p) : Overlay ("Debug"), proc (p)
+{
+    for (auto* t : { &live, &events })
+    {
+        t->setMultiLine (true);
+        t->setReadOnly (true);
+        t->setScrollbarsShown (true);
+        t->setCaretVisible (false);
+        t->setFont (Theme::monoFont (11.0f));
+        t->setColour (juce::TextEditor::backgroundColourId, Theme::background);
+        t->setColour (juce::TextEditor::outlineColourId, Theme::edge);
+        t->setColour (juce::TextEditor::textColourId, Theme::text);
+        addAndMakeVisible (t);
+    }
+    live.setTitle ("Live data");
+    events.setTitle ("Recent events");
+    freeze.setTooltip ("Pause the live data so it can be scrolled and read.");
+    addAndMakeVisible (freeze);
+
+    crashLog.setTooltip ("Write a time-stamped log to Documents\\Interference\\Support. It starts with a troubleshooting file, "
+                         "records events while you work and, if the plug-in or host crashes, the error and a stack trace. "
+                         "Off every time the plug-in loads.");
+    crashLog.setToggleState (proc.isCrashLogging(), juce::dontSendNotification);
+    crashLog.onClick = [this] { setCrashLog (crashLog.getToggleState()); };
+    addAndMakeVisible (crashLog);
+
+    exportButton.setTooltip ("Run a quick self-test and save it with every setting, audio / MIDI setup, version, licence and host "
+                             "information to a .txt file in Documents\\Interference\\Support.");
+    exportButton.onClick = [this] { exportTroubleshooting (true); };
+    openFolder.setTooltip ("Show the folder that holds crash logs and troubleshooting files.");
+    openFolder.onClick = []
+    {
+        const auto f = Diagnostics::supportFolder();
+        f.createDirectory();
+        f.revealToUser();
+    };
+    hardReset.setTooltip ("Troubleshooting only: resets every setting, clears MIDI mappings, A/B and options, and deletes the "
+                          "options (cache) file. Your preset and audio files are kept.");
+    hardReset.onClick = [this]
+    {
+        juce::Component::SafePointer<DebugOverlay> safe (this);
+        juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
+                                          .withTitle ("Hard reset")
+                                          .withMessage ("Reset ALL settings to default, clear MIDI mappings, A/B and options, and delete the "
+                                                        "options file?\n\nPresets and rendered audio are not touched. This cannot be undone.")
+                                          .withButton ("Hard reset").withButton ("Cancel"),
+                                      [safe] (int result) { if (safe != nullptr && result == 1) safe->performHardReset(); });
+    };
+    for (auto* b : { &exportButton, &openFolder, &hardReset })
+        addAndMakeVisible (b);
+
+    for (auto* l : { &crashStatus, &info })
+    {
+        l->setFont (Theme::bodyFont (12.0f));
+        l->setColour (juce::Label::textColourId, Theme::textMuted);
+        l->setJustificationType (juce::Justification::topLeft);
+        addAndMakeVisible (l);
+    }
+    info.setText (juce::String ("Troubleshooting file: a quick self-test plus every setting, for minor problems. "
+                                "Crash log: for crashes; it also contains a troubleshooting file.\n"
+                                "Both are saved in Documents\\Interference\\Support. If the plug-in hard-crashes, tick "
+                                "'Create log file on crash', reproduce the problem, then send the newest .log and a troubleshooting "
+                                "file to ") + Branding::supportEmail + " with a detailed description of what you did.",
+                  juce::dontSendNotification);
+    refreshCrashStatus();
+    cursor = 0;
+    recent = proc.activitySince (cursor);
+    timerCallback();
+    startTimerHz (5);
+}
+
+DebugOverlay::~DebugOverlay() { stopTimer(); }
+
+void DebugOverlay::timerCallback()
+{
+    const auto fresh = proc.activitySince (cursor);
+    if (! fresh.isEmpty() || events.isEmpty())
+    {
+        recent.addArray (fresh);
+        if (recent.size() > 200)
+            recent.removeRange (0, recent.size() - 200);
+        events.setText (recent.isEmpty() ? juce::String ("(no events yet: move a control or play a gesture)") : recent.joinIntoString ("\n"), false);
+        events.moveCaretToEnd();
+    }
+    if (! freeze.getToggleState())
+        live.setText (Diagnostics::liveData (proc), false);
+}
+
+void DebugOverlay::refreshCrashStatus()
+{
+    const auto f = CrashLog::currentFile();
+    crashStatus.setText (proc.isCrashLogging() && f != juce::File() ? "Logging to " + f.getFullPathName()
+                                                                    : juce::String ("Crash log off."),
+                         juce::dontSendNotification);
+    crashLog.setToggleState (proc.isCrashLogging(), juce::dontSendNotification);
+}
+
+void DebugOverlay::setCrashLog (bool on)
+{
+    if (on && ! proc.isCrashLogging())
+    {
+        juce::File f;
+        juce::String err;
+        if (! proc.startCrashLog (f, err))
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
+                                              .withTitle ("Cannot create crash log").withMessage (err).withButton ("OK"), nullptr);
+    }
+    else if (! on)
+        proc.stopCrashLog();
+    refreshCrashStatus();
+}
+
+bool DebugOverlay::exportTroubleshooting (bool showPopup)
+{
+    juce::File f;
+    juce::String err;
+    const bool ok = Diagnostics::writeTroubleshootingFile (proc, f, err);
+    if (showPopup)
+        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                          .withIconType (ok ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon)
+                                          .withTitle (ok ? "Troubleshooting file saved" : "Could not save the troubleshooting file")
+                                          .withMessage (ok ? "Saved " + f.getFileName() + "\n\nLocation: " + f.getParentDirectory().getFullPathName()
+                                                             + "\n\nSend it to " + Branding::supportEmail + " with a description of the problem."
+                                                           : err)
+                                          .withButton ("OK"), nullptr);
+    return ok;
+}
+
+void DebugOverlay::performHardReset()
+{
+    proc.hardReset();
+    refreshCrashStatus();
+}
+
+void DebugOverlay::layoutContent (juce::Rectangle<int> r)
+{
+    auto side = r.removeFromRight (juce::jlimit (260, 360, r.getWidth() / 3));
+    r.removeFromRight (12);
+    auto top = r.removeFromTop (24);
+    freeze.setBounds (top.removeFromRight (90));
+    r.removeFromTop (4);
+    events.setBounds (r.removeFromBottom (juce::jmax (80, r.getHeight() / 4)));
+    r.removeFromBottom (8);
+    live.setBounds (r);
+
+    crashLog.setBounds (side.removeFromTop (26));
+    crashStatus.setBounds (side.removeFromTop (48));
+    side.removeFromTop (6);
+    for (auto* b : { &exportButton, &openFolder })
+    {
+        b->setBounds (side.removeFromTop (28));
+        side.removeFromTop (6);
+    }
+    hardReset.setBounds (side.removeFromBottom (28));
+    side.removeFromBottom (8);
+    info.setBounds (side);
+}
+
+//==============================================================================
+GhostOverlay::GhostOverlay (InterferenceProcessor& p)
+    : Overlay ("Secret: Ghost Carrier"),
+      enable (p, P::ghostOn, "Ghost Carrier On"),
+      freq (p, P::ghostFreq), drift (p, P::ghostDrift), amount (p, P::ghostMix)
+{
+    closeButton.setTooltip ("Close the secret panel (Esc). The hidden effect keeps its settings.");
+    blurb.setText ("You found a secret hidden effect. A stray radio carrier leaks into the wet signal and ring-modulates it: "
+                   "low frequencies give tremolo-like beating, high ones metallic sidebands. It is an artistic Studio-style "
+                   "effect, not part of the hardware model, and is saved with projects and presets like any other setting. "
+                   "Bypass and Dry/Wet 0 % still give the untouched dry signal.",
+                   juce::dontSendNotification);
+    blurb.setFont (Theme::bodyFont (13.0f));
+    blurb.setColour (juce::Label::textColourId, Theme::text);
+    blurb.setJustificationType (juce::Justification::topLeft);
+    blurb.setTooltip ("Secret hidden effect.");
+    for (auto* c : std::initializer_list<juce::Component*> { &enable, &freq, &drift, &amount, &blurb })
+        addAndMakeVisible (c);
+}
+
+void GhostOverlay::layoutContent (juce::Rectangle<int> r)
+{
+    blurb.setBounds (r.removeFromTop (72));
+    r.removeFromTop (8);
+    enable.setBounds (r.removeFromTop (28).removeFromLeft (180));
+    r.removeFromTop (12);
+    auto row = r.removeFromTop (juce::jmin (140, r.getHeight()));
+    const int w = juce::jmin (140, row.getWidth() / 3);
+    for (auto* k : { &freq, &drift, &amount })
+        k->setBounds (row.removeFromLeft (w).reduced (6, 0));
 }
 
 //==============================================================================

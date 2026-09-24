@@ -60,6 +60,49 @@ private:
     int lastMapCount = -1;
 };
 
+/** Help > Debug: live raw data, recent events, misconfiguration checks, opt-in crash log,
+    troubleshooting export and hard reset (include.md "debug feature"). */
+class DebugOverlay final : public Overlay, private juce::Timer
+{
+public:
+    explicit DebugOverlay (InterferenceProcessor& p);
+    ~DebugOverlay() override;
+
+    // exposed for GUI tests
+    bool exportTroubleshooting (bool showPopup = true);
+    void setCrashLog (bool on);
+    void performHardReset();
+    juce::String currentLiveText() const { return live.getText(); }
+
+private:
+    void layoutContent (juce::Rectangle<int> area) override;
+    void timerCallback() override;
+    void refreshCrashStatus();
+
+    InterferenceProcessor& proc;
+    juce::TextEditor live, events;
+    juce::ToggleButton freeze { "Freeze" }, crashLog { "Create log file on crash" };
+    juce::TextButton exportButton { "Export troubleshooting file" }, openFolder { "Open support folder" },
+                     hardReset { "Reset all settings to default (hard reset)..." };
+    juce::Label crashStatus, info;
+    juce::int64 cursor = 0;
+    juce::StringArray recent;
+};
+
+/** The hidden Ghost Carrier panel (easter egg): opened by clicking the tip of the signature
+    notch in the top-left corner. */
+class GhostOverlay final : public Overlay
+{
+public:
+    explicit GhostOverlay (InterferenceProcessor& p);
+
+private:
+    void layoutContent (juce::Rectangle<int> area) override;
+    ParamToggle enable;
+    ParamKnob freq, drift, amount;
+    juce::Label blurb;
+};
+
 /** Offline render dialog: options, background render with progress / cancel, silent-result
     warning, file chooser (no overwrite without confirmation), success popup. */
 class RenderOverlay final : public Overlay, private juce::Timer

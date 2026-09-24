@@ -514,3 +514,25 @@ IFX_TEST (Engine, bypassedSlotAdvancesTimeSilently)
     IFX_CHECK (evWhileBypassed > 0); // the physical clock advanced
 }
 
+
+IFX_TEST (Engine, ghostCarrierModulatesOnlyTheWetPathAndIsBounded)
+{
+    auto render = [] (int block, float mix, bool on)
+    {
+        Harness h (kFs, 2, block);
+        h.params = quietParams();
+        h.params[P::mix] = mix;
+        h.params[P::ghostOn] = on ? 1.0f : 0.0f;
+        h.params[P::ghostMix] = 1.0f;
+        h.params[P::ghostDrift] = 1.0f;
+        h.setSlots (SourceType::None, SourceType::None);
+        return h.run (sine (2, (int) kFs, 1000.0, kFs));
+    };
+    const auto in = sine (2, (int) kFs, 1000.0, kFs);
+    const auto on = render (64, 1.0f, true);
+    IFX_CHECK (maxAbsDiff (on, in) > 0.1);                      // audible when enabled
+    IFX_CHECK (allFinite (on) && peakOf (on) <= peakOf (in) + 1e-6f); // ring modulation never adds level
+    IFX_CHECK (maxAbsDiff (render (333, 1.0f, true), on) < 1e-6);  // block-size independent
+    IFX_CHECK (maxAbsDiff (render (64, 0.0f, true), in) == 0.0);   // dry path untouched
+    IFX_CHECK (maxAbsDiff (render (64, 1.0f, false), in) == 0.0);  // off = exact identity
+}

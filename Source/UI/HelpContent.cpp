@@ -182,7 +182,18 @@ namespace
             "rescan or clear the host's plugin cache, and that you use a 64-bit host. The plugin needs no installer, runtime or internet.\n"
             "If presets do not appear: they must be .ifxpreset files directly in Documents\\Interference\\Presets (use Options > Open preset folder).\n"
             "If there is no sound: use 'Why quiet?' on each slot. If a host denies MIDI to effects, use the GUI or automation.\n"
-            "Debug tools (Help > Debug): a live data window, crash log option, troubleshooting export and hard reset." });
+            "Debug tools (Help > Debug...):\n"
+            "- Live data: every internal value, bus peaks, clock, contact states and events as you work, plus obvious "
+            "misconfigurations (bypass on, no active source, Dry/Wet 0 %, lane without a clock...). Freeze pauses it.\n"
+            "- Create log file on crash: off every time the plug-in loads. When ticked, a time-stamped .log file is written to "
+            "Documents\\Interference\\Support; it starts with a troubleshooting file, records events while you work and, if the "
+            "plug-in or host crashes, the error and a stack trace.\n"
+            "- Export troubleshooting file: a light self-test plus every setting, audio and MIDI setup, version, licence and host "
+            "(DAW) information, saved as a .txt file in the same folder. It helps you and support with minor problems.\n"
+            "- Reset all settings to default (hard reset): much stronger than Reset - also clears MIDI mappings, A/B and options and "
+            "deletes the options (cache) file. Presets and audio are kept.\n"
+            "If the plug-in keeps crashing, send BOTH the newest crash .log and a troubleshooting file to "
+            + juce::String (Branding::supportEmail) + " with a detailed description of what you were doing." });
 
         s.add ({ "About, licence and support",
             juce::String (Branding::productName) + " " + IFX_VERSION_STRING + nl

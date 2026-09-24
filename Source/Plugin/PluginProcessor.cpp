@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "Diagnostics.h"
 #if ! IFX_HEADLESS || IFX_GUI_TESTS
  #include "PluginEditor.h"
 #endif
@@ -126,6 +127,7 @@ InterferenceProcessor::InterferenceProcessor()
 InterferenceProcessor::~InterferenceProcessor()
 {
     stopTimer();
+    CrashLog::stop (this);
     liveRecorder.stop();
 }
 
@@ -605,12 +607,18 @@ void InterferenceProcessor::resetToDefaults()
 
 void InterferenceProcessor::hardReset()
 {
+    // Help > Debug: much more destructive than Reset - also clears MIDI mappings, A/B, options
+    // and deletes the options (cache) file. Presets, renders and support files are user data and stay.
+    stopCrashLog();
     liveRecorder.stop();
     midiMap.clear();
     abValid[0] = abValid[1] = false;
     abIndex = 0;
     settingsFile->clear();
     settingsFile->saveIfNeeded();
+    settingsFile->getFile().deleteFile();
+    randomizedOnce = false;
+    currentProgram = 0;
     applyState (FactoryPresets::initState());
     engine.requestReset();
 }
@@ -714,7 +722,40 @@ void InterferenceProcessor::noteActivity (const juce::String& s)
     activity.add (s);
     if (activity.size() > 200)
         activity.removeRange (0, activity.size() - 200);
+    history.add (s);
+    ++historyEnd;
+    if (history.size() > 400)
+        history.removeRange (0, history.size() - 400);
 }
+
+juce::StringArray InterferenceProcessor::activitySince (juce::int64& cursor) const
+{
+    const juce::ScopedLock sl (activityLock);
+    const juce::int64 first = historyEnd - history.size();
+    juce::StringArray out;
+    for (juce::int64 i = std::max (cursor, first); i < historyEnd; ++i)
+        out.add (history[(int) (i - first)]);
+    cursor = historyEnd;
+    return out;
+}
+
+bool InterferenceProcessor::startCrashLog (juce::File& written, juce::String& error)
+{
+    {
+        const juce::ScopedLock sl (activityLock);
+        crashCursor = historyEnd;
+    }
+    return CrashLog::start (this, Diagnostics::troubleshootingReport (*this), written, error);
+}
+
+void InterferenceProcessor::stopCrashLog()
+{
+    if (CrashLog::isOwnedBy (this))
+        CrashLog::append (activitySince (crashCursor));
+    CrashLog::stop (this);
+}
+
+bool InterferenceProcessor::isCrashLogging() const { return CrashLog::isOwnedBy (this); }
 
 juce::StringArray InterferenceProcessor::drainActivity()
 {
@@ -755,6 +796,14 @@ void InterferenceProcessor::timerCallback()
     apply (start1, size1);
     apply (start2, size2);
     ccFifo.finishedRead (size1 + size2);
+
+    // opt-in crash log: append recent activity about twice a second (message thread file IO)
+    if (++crashTicks >= 15)
+    {
+        crashTicks = 0;
+        if (CrashLog::isOwnedBy (this))
+            CrashLog::append (activitySince (crashCursor));
+    }
 
     // parameter changes -> data stream
     for (int i = 0; i < kNumParams; ++i)

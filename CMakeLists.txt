@@ -117,6 +117,7 @@ if(IFX_HAVE_PLUGIN)
         ${IFX_UI_SOURCES}
         Source/Plugin/PluginProcessor.cpp
         Source/Plugin/PluginEditor.cpp
+        Source/Plugin/Diagnostics.cpp
     )
     target_include_directories(Interference PRIVATE Source)
     target_link_libraries(Interference PRIVATE ${IFX_MODULES}
@@ -158,6 +159,7 @@ if(IFX_HAVE_PLUGIN AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Tests/TestGui.cpp")
         ${IFX_SHARED_SOURCES} ${IFX_UI_SOURCES}
         Source/Plugin/PluginProcessor.cpp
         Source/Plugin/PluginEditor.cpp
+        Source/Plugin/Diagnostics.cpp
         Tests/TestMain.cpp
         Tests/TestGui.cpp)
     target_include_directories(InterferenceGuiTests PRIVATE Source)
