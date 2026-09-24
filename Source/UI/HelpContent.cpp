@@ -56,12 +56,16 @@ namespace
             "  Exposed Plug Touch - press and hold on the finger; contact grows while held, drag down to press harder; release returns.\n"
             "  Cable Handling - drag along the cable to set the bend point; fast drags shake it.\n"
             "  Dirty Pot - drag to turn; double-click to show or hide the interior (track, wiper, worn arc).\n"
-            "Every illustration has redundant labelled knobs in the context panel on the right (keyboard: arrows adjust, Space plays the gesture).\n\n"
+            "Every illustration has redundant labelled knobs in the context panel on the right (keyboard: arrows adjust, Space plays the gesture).\n"
+            "Keyboard: Tab / Shift+Tab move focus in a fixed order - header, modes and sources, slot cards, illustrations, context "
+            "panel, bottom tabs and the active panel, output strip - and stay inside an open overlay until it closes.\n"
+            "Right-click a mode button or a slot's Play button for MIDI learn / reset / set value (Mode, Trigger A/B).\n\n"
             "Context panel: the selected slot's controls. A control that asks for more than the circuit or range policy allows shows a "
-            "short yellow 'Limited' reason above it (also in its tooltip) and, where a value is clamped, a yellow tick on its arc at the "
-            "effective value; the stored value is never changed. Details opens the source circuit, input stage, trims, stereo, "
-            "environment (buzz, interference), range policy, order and linking, and diagnostic meters (healthy-reference level, "
-            "electrical injection, mechanical injection) with the contact state.\n\n"
+            "short yellow 'Limited' reason above it (in its tooltip while you adjust it) and, where a value is clamped, a yellow tick on "
+            "its arc at the effective value; the stored value is never changed. Details opens the source circuit, input stage, trims, "
+            "stereo, chaos, range policy and gesture linking, and diagnostic meters (healthy-reference level, electrical injection, "
+            "mechanical injection) with the contact state; the drawer scrolls when the window is small. Mains, Buzz and Interference "
+            "are on the Environment tab; the processing order is the button between the cards.\n\n"
             "Bottom tabs: Gesture Lane, Studio chain, Create, Routing, Environment. While an internal excitation is feeding the circuit, an "
             "'Excitation on' badge sits next to the tabs (click it to open Create). "
             "Output strip: Dry/Wet, Output, Monitor, Ceiling, Bypass and meters." });
@@ -77,7 +81,8 @@ namespace
             "  Shield - how well an open input is shielded from hum.\n"
             "Contact changes gate the real signal: an open contact removes the through audio.\n"
             "A fully seated plug on a healthy spot is stable: Wiggle and Intermittency then show 'Contact stable here'. "
-            "'Move toward worn area' (context panel, or the Why quiet? dialog) slowly moves the plug to Wear Position." });
+            "'Move toward worn area' (context panel with Details closed, or the Why quiet? dialog) slowly moves the plug to Wear "
+            "Position. It stops at once if you or host automation move the plug." });
 
         s.add ({ "Exposed Plug Touch",
             "An artistic, simplified input-coupling model (not an exact human-body circuit): a finger on a floating high-impedance "
@@ -108,8 +113,8 @@ namespace
             "  Vibration - only a severely dirty pot (Dirt > 70 %) stays intermittent while held still." });
 
         s.add ({ "Two slots, order and linking",
-            "Slots A and B are processed in series: A then B, or B then A with Swap Order (the order button between the slot cards, "
-            "also in Details). A downstream open contact "
+            "Slots A and B are processed in series: A then B, or B then A with Swap Order (the order button between the slot cards). "
+            "A downstream open contact "
             "interrupts the upstream source's artifacts; a downstream pot filters them. Two sources in series can interact, but this "
             "is not a physically exact model of one combined device.\n"
             "Picking a third source asks which slot to replace; nothing is dropped silently. Choosing the other slot's source in a slot "
@@ -137,7 +142,8 @@ namespace
             "the signal, entering before the slots. 2-prong gear leaks a small current (slightly buzzy hum); Grounded gear is driven "
             "by the ground-voltage difference set by Outlets (round hum). Cable Run and Cable Shield set the resistance. Interface: "
             "Unbalanced passes it all, Balanced removes about 30 dB, an Isolator about 70 dB at mains (a thin high buzz remains), an "
-            "Input Transformer about 100 dB. The readout is the measured loop hum after the interface.\n"
+            "Input Transformer about 100 dB. The readout is the measured loop hum after the interface. Cable Run is a slider; the "
+            "ground-loop readout sits at the right of the ground-loop heading.\n"
             "2G Phone: a GSM phone's 217 Hz bursts detected by the circuit. Check-in = a few bursts, Incoming = handshake clusters, "
             "In Call = continuous. Phone Distance: falls off steeply beyond a metre or two. (2G only: modern networks sound different.)\n\n"
             "Playing it:\n"
@@ -172,7 +178,8 @@ namespace
             "Two lanes (A drives slot A, B drives slot B), 1-64 steps each; lengths can differ (A: 16 against B: 12). "
             "Each step: gesture, intensity, accent, ratchet (2-4 retriggers, coalesced with 'motion limit' if too fast), probability, "
             "duration, position target (e.g. aim at the worn region), microtiming, Studio send and choke. "
-            "'Gap' (step menu, Loose Jack and Dirty Pot lanes) pulls the jack open or turns the pot to minimum for one step: "
+            "'Gap' (step menu, Loose Jack and Dirty Pot lanes) pulls the jack open or turns the pot to minimum for one step "
+            "(Dirty Pot with the Level circuit only: with the Tone circuit the minimum just darkens the sound): "
             "a real gesture, not a hidden gate (use the Studio Rhythm Gate for hard gating).\n"
             "The two lanes share one clock, so A: 16 against B: 12 repeats every 48 steps; the clock line shows the position "
             "in that combined cycle (at most 64 x 63 = 4032 steps).\n"
@@ -207,7 +214,8 @@ namespace
             "  Echo - short filtered delay, free or tempo-synced, with bounded repeats and Kill Tail.\n"
             "  Feedback - Resonator output back into Drive through HP/LP filters and a delay; its amount is clamped for stability "
             "(the panel shows 'Limited by loop stability').\n"
-            "Each stage has a small meter under its button: upper bar = input peak, lower bar = output peak.\n"
+            "Each stage has a small meter under its button: upper bar = input peak, lower bar = output peak. Studio controls that do "
+            "nothing in the current setting are greyed, with the reason in their tooltip.\n"
             "Raw Hardware bypasses Studio, feedback, excitation and the hidden extra (keep excitation with Keep Excitation), so the "
             "wet signal is exactly the modelled hardware C.\n"
             "Ceiling (output strip) is an explicit peak ceiling: an instant-attack, stereo-linked gain rider with about 45 ms release "

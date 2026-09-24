@@ -34,10 +34,12 @@ private:
     ParamToggle enable;
     ParamChoice gesture;
     ParamKnob level;
-    juce::TextButton trigger { "Play" }, why { "Why quiet?" };
+    ParamMenuButton trigger;        // "Play"; right-click: Trigger A / B parameter menu
+    juce::TextButton why { "Why quiet?" };
     LevelMeter meter { {}, false };
     juce::Rectangle<int> causeArea;
     bool updating = false, trigDown = false;
+    juce::ScopedMessageBox messageBox; // the Why-quiet dialog; closed with the card
 };
 
 /** The four sources as buttons. Picking a third source when both slots are full opens an
@@ -73,6 +75,11 @@ public:
     void paint (juce::Graphics& g) override;
     void refresh (const SlotView& v);
     bool detailsOpen() const noexcept { return details.getToggleState(); }
+    /** Opens / closes the Details drawer (the button does the same; exposed for GUI tests). */
+    void setDetailsOpen (bool open);
+    /** The drawer's scrolled content (exposed for GUI tests). */
+    juce::Component& getDrawerContent() noexcept { return drawerContent; }
+    juce::Viewport& getDrawer() noexcept { return drawer; }
     juce::Rectangle<int> getFreeArea() const noexcept { return freeArea; }
     std::function<void()> onLayoutChanged;
 
@@ -80,6 +87,7 @@ private:
     void rebuild();
     void timerCallback() override;
     void endGuide();
+    int layoutDrawer (int width); // lays out the drawer content, returns its height
     ParamKnob* knob (int param);
 
     InterferenceProcessor& proc;
@@ -89,10 +97,16 @@ private:
     juce::TextButton details { "Details" };
     juce::TextButton moveToWear { "Move toward worn area" };
     float guideFrom = 1.0f, guideTo = 1.0f, guidePos = 0.0f;
+    float guideLast = -1.0f; // normalised value the ramp wrote last (-1 = none yet)
     bool guiding = false;
     LevelMeter throughMeter { "through" }, elecMeter { "electrical" }, mechMeter { "mechanical" };
     juce::Label diag;
     juce::Rectangle<int> freeArea;
+    // Details drawer: detail controls, meters and diagnostics scroll inside a viewport, so nothing
+    // is ever squeezed to zero size when the window is small. Declared last: the viewport is
+    // destroyed first and only detaches (never deletes) its content.
+    juce::Component drawerContent;
+    juce::Viewport drawer;
 };
 
 } // namespace ifx

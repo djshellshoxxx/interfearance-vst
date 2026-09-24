@@ -79,11 +79,12 @@ int Illustration::primaryParamFor (SourceType t, int slotIndex) noexcept
 
 bool Illustration::handlePopup (const juce::MouseEvent& e)
 {
-    if (! e.mods.isPopupMenu())
-        return false;
-    popupActive = true;
-    showParamMenu (proc, primaryParam(), *this);
-    return true;
+    // set on every mouse-down: a right-click whose mouse-up never arrived (the menu window took
+    // the mouse) must not make the next left drag skip its edit or leave its host gesture open
+    popupActive = e.mods.isPopupMenu();
+    if (popupActive)
+        showParamMenu (proc, primaryParam(), *this);
+    return popupActive;
 }
 
 bool Illustration::finishPopup() noexcept

@@ -199,9 +199,9 @@ namespace
 
         {
             Builder b ("Hum Storm", "Wild",
-                       "Expressive: a floating input and a cable with a torn shield under a fluttering finger; the hum bursts feed a synced Studio echo.",
+                       "Expressive: a passive pickup into a floating input and a cable with a torn shield under a fluttering finger; the hum bursts feed a synced Studio echo.",
                        SourceType::PlugTouch, SourceType::CableHandling);
-            b.set (P::policy, 1).set (P::hum, 0.8f).set (P::buzz, 0.25f).set (P::tcExposure, 1.0f).set (P::tcShield, 0.0f).set (P::tcPressure, 0.1f)
+            b.set (P::policy, 1).set (P::inputMode, 1).set (P::hum, 0.8f).set (P::buzz, 0.25f).set (P::tcExposure, 1.0f).set (P::tcShield, 0.0f).set (P::tcPressure, 0.1f)
              .set (P::tcBody, 0.8f).set (P::cbShieldDmg, 0.9f).set (P::cbShake, 0.4f).set (P::cbDamage, 0.4f)
              .set (P::mode, 1).set (P::laneOn, 1).set (P::studioOn, 1).set (P::studioSrc, 0).set (P::ecOn, 1).set (P::ecMix, 0.45f).set (P::ecFeedback, 0.5f)
              .set (P::ceilOn, 1);
@@ -271,8 +271,9 @@ namespace
         }
         {
             Builder b ("Loop Fixed: Isolator", "Environment",
-                       "The same ground loop through a balanced input with an isolator box: about 70 dB less hum, a faint high buzz "
-                       "remains. Compare it with Breathing Ground Loop (A/B) to hear the fix.",
+                       "The same ground loop through a balanced input with an isolator box: about 70 dB less hum at mains, less "
+                       "on the upper harmonics. At this level the residue is far below hearing: the fix sounds like silence. The "
+                       "Environment tab readout shows what remains. Compare it with Breathing Ground Loop (A/B).",
                        SourceType::CableHandling, SourceType::LooseJack);
             b.set (P::glGear, 3).set (P::glRun, 30.0f).set (P::glShield, 0).set (P::glIface, 2).set (P::hum, 0.0f)
              .set (P::cbShieldDmg, 0.6f).set (P::cbDamage, 0.0f).set (P::cbWeakPos, 0.5f).set (P::cbBend, 0.5f).set (P::cbShake, 0.25f)

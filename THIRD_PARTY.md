@@ -11,10 +11,16 @@ Fonts are the operating system's own UI fonts, selected at run time (not embedde
 | zlib (bundled in JUCE `juce_core`) | as shipped with JUCE | zlib licence | statically linked |
 | libpng (bundled in JUCE `juce_graphics`) | as shipped with JUCE | libpng licence | statically linked |
 | libjpeg (bundled in JUCE `juce_graphics`) | as shipped with JUCE | IJG licence | statically linked |
-| FLAC / Ogg Vorbis (bundled in JUCE `juce_audio_formats`) | as shipped with JUCE | BSD-style | linked only if the format module pulls them in; WAV is the only format written |
+| HarfBuzz (bundled in JUCE `juce_graphics`) | as shipped with JUCE 8.0.8 | "Old MIT" | statically linked |
+| SheenBidi (bundled in JUCE `juce_graphics`) | as shipped with JUCE 8.0.8 | Apache License 2.0 | statically linked |
 
-Full licence texts ship with JUCE: `JUCE_8_0_8/LICENSE.md`,
-`JUCE_8_0_8/modules/juce_audio_processors/format_types/VST3_SDK/LICENSE.txt` and the files it references.
+FLAC and Ogg Vorbis are **not** compiled in (`JUCE_USE_FLAC=0`, `JUCE_USE_OGGVORBIS=0`): only WAV is written.
+
+This software is based in part on the work of the Independent JPEG Group.
+
+The full licence texts are in the release ZIP under `ThirdPartyLicenses/`: JUCE, HarfBuzz, SheenBidi (Apache 2.0),
+libpng, the IJG README, zlib and the Steinberg VST3 SDK licence (the bundled SDK is version 3.7.12). In the source
+tree they are in the JUCE 8.0.8 checkout (`LICENSE.md` and the files it references).
 
 ## Credits and attribution
 

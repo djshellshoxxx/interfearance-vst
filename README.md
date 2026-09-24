@@ -22,6 +22,7 @@ Version 1.0.0 · VST3 + stand-alone · Windows x64 · 0 samples latency · mono 
 | Document | Contents |
 |---|---|
 | [Docs/Manual.md](Docs/Manual.md) | User manual: quick start per mode, sources, two slots, environment, lane, seed, Studio, render, presets, levels |
+| [Docs/SoundDesign.md](Docs/SoundDesign.md) | 13 sound-design recipes: ground loops, dimmer wah, phone bursts, radio breakup, pops, grit |
 | [Docs/Install.md](Docs/Install.md) | Install, update, uninstall, file locations, troubleshooting |
 | [Docs/Routing.md](Docs/Routing.md) | Signal graph, named buses and monitor taps |
 | [Docs/MidiMap.md](Docs/MidiMap.md) | MIDI notes, controllers, MIDI learn, automation |
@@ -76,13 +77,16 @@ The DSP never depends on the GUI. The audio thread never allocates, locks, logs 
 
 `.github/workflows/ci.yml` (GitHub Actions) runs on every push and pull request:
 
-- **checks** (Ubuntu): licence notices (`LICENSE`, and `THIRD_PARTY.md` naming JUCE and VST3), and `Docs/Parameters.md`
-  must match `python tools/gen_param_doc.py`.
-- **build** (Windows, VS 2022 x64): JUCE 8.0.8 (cached), Release build, both test suites (any failure fails the job),
-  optional code signing, then `tools/make_release.ps1`. The release ZIP, its `.sha256` and the GUI snapshots are
-  uploaded as artifacts.
+- **checks** (Ubuntu): licence notices (`LICENSE`, and `THIRD_PARTY.md` naming JUCE, VST3, HarfBuzz and SheenBidi),
+  and `Docs/Parameters.md` must match `python tools/gen_param_doc.py`.
+- **build** (Windows, pinned `windows-2022`, VS 2022 x64): JUCE 8.0.8 (cached), Release build with warnings as errors,
+  both test suites (any failure fails the job), then an **unsigned** `tools/make_release.ps1` ZIP. The ZIP, its
+  `.sha256`, the built binaries and the GUI snapshots are uploaded as artifacts.
+- **release** (Windows, `v*` tags only, protected environment `release`): signs the tested binaries from **build**
+  when a certificate is configured, then packages the release ZIP. `SIGNATURE.txt` in the ZIP names the signer, or
+  says UNSIGNED.
 - **slow** (Windows, manual *Run workflow* only): `InterferenceTests.exe --slow`.
 
-Signing runs only when the repository secret `SIGNING_CERT_BASE64` (base64 PFX, optional `SIGNING_CERT_PASSWORD`) is
-set. Otherwise the job states that the artefacts are unsigned: no signature is ever faked. pluginval and DAW loading
-are not part of CI (see `Docs/QA.md`).
+Signing happens only for `v*` tags, in the `release` environment, and only when it holds the secret
+`SIGNING_CERT_BASE64` (base64 PFX, optional `SIGNING_CERT_PASSWORD`). A signature is never faked. pluginval and DAW
+loading are not part of CI (see `Docs/QA.md`).

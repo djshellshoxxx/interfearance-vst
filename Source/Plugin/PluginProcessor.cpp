@@ -111,7 +111,7 @@ InterferenceProcessor::InterferenceProcessor()
             c.store (-1);
 
     juce::PropertiesFile::Options o;
-    o.applicationName = "Interference";
+    o.applicationName = "Interference Options"; // the stand-alone app owns "Interference.settings" (device setup)
     o.filenameSuffix = ".settings";
     o.folderName = "Interference";
     o.osxLibrarySubFolder = "Application Support";
@@ -120,7 +120,7 @@ InterferenceProcessor::InterferenceProcessor()
     const auto dataRoot = StateIO::dataRootOverride();
     settingsFile = dataRoot == juce::File()
                      ? std::make_unique<juce::PropertiesFile> (o)
-                     : std::make_unique<juce::PropertiesFile> (dataRoot.getChildFile ("Options").getChildFile ("Interference.settings"), o);
+                     : std::make_unique<juce::PropertiesFile> (dataRoot.getChildFile ("Options").getChildFile ("Interference Options.settings"), o);
 
     loadedState = FactoryPresets::initState();
     abStates[0] = abStates[1] = loadedState;

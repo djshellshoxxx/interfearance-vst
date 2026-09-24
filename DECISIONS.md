@@ -50,3 +50,23 @@ Wubforge document and is used only for its general interaction grammar (overlays
   directly, and animating the drawn position would misrepresent the automated value; slider ticks (V8) are drawn.
 - Agents: three helper agents (research, audit, review) worked on disjoint files; only the main session builds
   (4 GB RAM machine). Their reports live in Docs/research/.
+- Machine Pattern scheduling (industrial spec 5): lane events are computed per block on the audio thread by
+  `scheduleLane` (a pure function of pattern + musical position) and insertion-sorted there, instead of a precompiled
+  event table. Reason: the pattern arrives lock-free (seqlock), the work is bounded (at most 512 events, no
+  allocation), and scheduling from the absolute position is what makes seek, loop and tempo changes deterministic.
+- Licence activation (master spec 12): none in 1.0; offline users are never blocked. Extension point, documented
+  only: a check would run on the message thread in `InterferenceProcessor`'s constructor, behind a `Branding` flag
+  next to `Branding::licenseSummary` (Source/UI/HelpContent.h), and report through the troubleshooting file's
+  "Licence activation" line. It must never gate the audio thread. Reason: the repo has no activation system, and the
+  spec forbids inventing a server dependency.
+- "Advanced calibration" in the Details drawer (master spec 8) is not a UI: the engineering caps live in
+  `Source/Core/PhysicalLimits.h` (Natural / Expressive columns, status "tunable, unmeasured") and are changed in code
+  after measurements. Reason: exposing caps to users would let them defeat the realism limits.
+- theme.md font weights 500 / 600: JUCE fonts offer plain and bold only, so labels use plain and headers bold. Reason:
+  no weight axis in JUCE 8's font API without embedding variable fonts (none are bundled: THIRD_PARTY.md).
+- theme.md knob sizes (48 / 36 / 64 px): knobs scale with their layout cells in the resizable window instead of
+  fixed pixel sizes. Reason: the editor resizes from 1000x700 to 2400x1600, and fixed sizes would waste or overflow
+  space.
+- theme.md "never boxes inside boxes": the slot cards and illustrations keep a 1 px bordered panel. Reason: they are
+  the two selectable, clickable units of the window (selection is shown by the accent border); every other grouping
+  uses 1 px separator lines.

@@ -804,3 +804,166 @@ the loop controls when Other Gear is Off; Outlets when the gear is 2-prong (the 
 gear); Distance when the phone is Away. `ParamChoice::setDormant` was added for this. Docs: Manual "Environment: hum,
 ground loop, dimmer, phone", a matching Help section, a Routing.md note on where the loop and phone enter, and
 Parameters.md regenerated. I used a tab rather than the Details drawer, which was already full.
+
+---
+
+## 12. Final status (2026-09-24, HEAD 8687cb1 plus the reviewer's uncommitted UI changes)
+
+Every Partial and Missing row above was re-checked against the committed code and the working tree.
+Key: **(a)** done; **(b)** documented deviation or decision; **(c)** not verifiable here, or a release action
+or gate in `Docs/QA.md`; **(d)** still missing. Row M1.5a (a working VST3) now builds (QA.md) and counts as
+Implemented. The other Deviation, Not verifiable and N/A rows are unchanged.
+
+| Status | Round 1 | Final |
+|---|---|---|
+| Implemented | 394 | 456 |
+| Partial | 81 | 16 |
+| Missing | 13 | 2 |
+| Deviation | 4 | 9 |
+| Not verifiable | 3 | 12 |
+| N/A | 3 | 3 |
+| **Total** | **498** | **498** |
+
+Of the 94 rows that were Partial or Missing: (a) 61 done, (b) 5 documented, (c) 10 not verifiable here or a pending release action, (d) 18 still missing.
+
+| # | Round-1 status | Final | Evidence / reason |
+|---|---|---|---|
+| M1.5c | Partial | (c) | pluginval strictness 10 is a local run; QA.md "Validation" still says "recorded below" with no result yet |
+| M1.5h | Partial | (a) | QA.md now has environment, results, CPU, soak and unverified gates (bce7516) |
+| M1.5i | Partial | (c) | tools/make_release.ps1 runs in CI (ZIP + .sha256 uploaded); the local checksum is not yet recorded in QA.md |
+| M4.2 | Partial | (a) | Engine.h:431-442 per-sample smoothing of dry/wet, output, Studio level, ceiling, pre-drive, hum/buzz/RF; StudioChain.h:238-242 stage wets and drive gains; Scenarios.abruptGainAndRoutingChangesAreDeclicked |
+| M4.22 | Partial | (a) | ChargeCircuit.h: the high-pass acts on g only, bias smoothed over 50 ms; Scenarios.policySwitchOnStillHardwareIsSmoothAndEventFree |
+| M6.5 | Partial | (a) | order button between the slot cards (MainView), live order in RoutingView |
+| M6.6 | Partial | (b) | Issues.md O11 (no per-slot Solo; use A/B compare or the slot On buttons) |
+| M6.9 | Partial | (a) | Scenarios.everyPairSoundsDifferentInEachOrder |
+| M7.17 | Partial | (a) | Scenarios.forwardSeekRestartsExactlyLikeAFreshStart, stopThenStartReplaysLockedTake..., sampleRateSwitchLeavesNoTraceOfTheOldRate |
+| M7.18 | Partial | (a) | MidiMap.md and Help describe the per-parameter automation handling; matches M4.2 |
+| M8.5 | Partial | (d) | no calibration view and no DECISIONS entry (see the (d) list) |
+| M8.7 | Partial | (d) | focus order still implicit: no setExplicitFocusOrder in Source/UI (see the (d) list) |
+| M8.10 | Partial | (a) | Touch field follows the measured pickup; the rings stand still at zero pickup (Illustrations.cpp) |
+| W4 | Partial | (b) | Issues.md O9 + Manual "Render and record": Render replays lane and gestures; Record captures live gestures |
+| W5 | Partial | (b) | order button done; the audition part is Issues.md O11 |
+| H6 | Partial | (a) | see M4.2 |
+| H13 | Partial | (a) | Engine.h:777: tail is 0 with Studio off or Raw Hardware on |
+| H19 | Partial | (a) | Scenarios.ceilingHoldsOversLinkedAndReleases |
+| T1 | Partial | (a) | Scenarios.dcInputPassesHealthyHardwareSteadily, logSweepThroughHealthyAndFaultyRigs |
+| T3 | Missing | (a) | Scenarios.injectedArtifactsCarryNoDc, dcInputPassesHealthyHardwareSteadily |
+| T7 | Partial | (a) | Scenarios.forwardSeekRestartsExactlyLikeAFreshStart |
+| T10 | Partial | (a) | Scenarios.everyPairSoundsDifferentInEachOrder |
+| T11 | Partial | (a) | Scenarios.tempoChangesKeepLaneGesturesOnTheGrid |
+| T13 | Partial | (a) | by composition: Host.stateRoundTripThroughHostBlob (exact state) + locked replay tests (stopThenStart..., lockedSeedBounceIsNullIdentical); DAW reopen is QA gate 1 |
+| T15 | Missing | (a) | Scenarios.offlineRenderMatchesTheRealTimeEngine |
+| T18 | Partial | (c) | pluginval 10: a local run whose result is not yet in QA.md |
+| T21 | Partial | (c) | QA.md unverified gate 6 (sanitizer build not run on the 4 GB machine) |
+| T22 | Partial | (a) | Scenarios.randomParameterJumpsEveryBlockStayFiniteAndBounded + Gui.concurrentAudioAndGuiActions |
+| T23 | Partial | (a) | QA.md "Soak (offline)": 60 min in 437 s, no drift, PASS; the real-time host soak is gate 2 |
+| T24 | Partial | (c) | plugin scan = the pluginval run (T18) and the DAW scan (gate 1) |
+| T29 | Partial | (d) | not listed as an unverified gate in QA.md (see the (d) list) |
+| T31 | Missing | (d) | no accessibility test (see the (d) list) |
+| T32 | Partial | (a) | .github/workflows/ci.yml |
+| D9 | Partial | (a) | QA.md CPU table (44.1-192 kHz) and the Manual compatibility row |
+| D19 | Partial | (d) | no extension-point note in DECISIONS.md or the docs (see the (d) list) |
+| E2 | Partial | (c) | QA.md is complete except the pluginval 10 and release-ZIP records (see M1.5c / M1.5i) |
+| R1.5 | Partial | (a) | ParamKnob Limited text, tooltip and effective tick; excitation, feedback, contact-stable and line-source hints |
+| R1.6 | Missing | (a) | Scenarios.policySwitchOnStillHardwareIsSmoothAndEventFree |
+| R2.8 | Partial | (a) | ChargeCircuit change, see M4.22 |
+| R2.12 | Partial | (a) | Tests/TestLimits.cpp covers the six previously untested bounds |
+| R3.8 | Partial | (a) | "Contact stable here" drawn as text on Wiggle and Intermittency |
+| R3.9 | Missing | (a) | "Move toward worn area" button and Why-quiet action (SlotPanel.cpp) |
+| R7.5 | Partial | (d) | no test that linked-gesture pops are correlated (see the (d) list) |
+| R8.5 | Partial | (a) | "Excitation on" badge (MainView) |
+| R9.2 | Partial | (d) | only environment and circuit controls are greyed; dependent Studio stage controls are not (see the (d) list) |
+| R9.3 | Partial | (a) | see R1.5 |
+| R9.6 | Partial | (a) | see R1.6 |
+| R9.7 | Partial | (a) | illustration tooltips (Illustrations.cpp) |
+| R9.8 | Partial | (a) | see M8.10 |
+| R9.9 | Partial | (a) | policy in the mode row, Mic knob, Excitation badge |
+| R9.10 | Partial | (b) | Issues.md O10 (through meter shows R; the cable electrical meter includes mechanical) |
+| R10.1 | Partial | (d) | source-table rows are still tested only at 48 kHz / 256 (see the (d) list) |
+| R10.3 | Partial | (a) | see M6.9 |
+| R10.5 | Missing | (d) | no GUI test calls explainQuiet or checks dormant states (see the (d) list) |
+| C1.3 | Partial | (c) | QA.md unverified gate 3 |
+| C3.1 | Partial | (d) | EQ coefficients are still recomputed per block without smoothing (StudioChain.h setParams) (see the (d) list) |
+| C3.5 | Partial | (a) | stage meters (StudioPanel) from telemetry.stageIn/stageOut (Engine.h:779) |
+| C3.6 | Partial | (a) | Studio note "Gate: no clock, stays open" |
+| C3.9 | Partial | (a) | RoutingView lists the feedback path and amount |
+| C3.10 | Partial | (a) | StudioChain.h:191: loop gain x4 with Auto Match |
+| C3.12 | Partial | (a) | Routing.md "Host freeze and offline bounce" |
+| C3.13 | Partial | (a) | see C3.5 |
+| C3.17 | Missing | (a) | Scenarios.ceilingHoldsOversLinkedAndReleases |
+| C4.2 | Partial | (a) | see M6.5 |
+| C4.13 | Partial | (a) | Engine.h:660-662: Ghost is applied before the Raw Hardware blend |
+| C7.1 | Partial | (d) | no single layout x tap matrix test (see the (d) list) |
+| C7.3 | Missing | (a) | Scenarios.inputDriveKeepsCounterfactualBusesHonest |
+| C7.8 | Partial | (a) | Scenarios.randomParameterJumpsEveryBlockStayFiniteAndBounded |
+| C7.9 | Missing | (a) | Scenarios.stereoDifferenceZeroKeepsChannelsIdentical |
+| C7.13 | Partial | (a) | see T13 |
+| I2.11 | Partial | (a) | "motion limit reached" drawn for every source (Illustrations.cpp) |
+| I3.2 | Missing | (a) | Manual and Help: maximum combined cycle 64 x 63 = 4032 steps |
+| I3.4 | Partial | (a) | lane clock line "cycle n / N" (LaneEditor.cpp) |
+| I3.6 | Partial | (a) | step-menu "Gap" item for jack and pot lanes (LaneEditor.cpp) |
+| I5.3 | Partial | (d) | audio-thread scheduling and sort not recorded in DECISIONS.md (see the (d) list) |
+| I5.6a | Missing | (a) | Scenarios.oddTimeSignaturesPutBarsOnTheirOwnGrid |
+| I5.6c | Missing | (a) | Scenarios.tempoChangesKeepLaneGesturesOnTheGrid |
+| I5.6e | Partial | (a) | Scenarios.fillReturnsToTheBasePatternOnRelease |
+| I5.6f | Partial | (a) | see T13 |
+| I6.1 | Partial | (a) | Research.md: SOS NIN articles, NIME 2021, DAFx feedback paper |
+| G1 | Partial | (a) | Help "Studio chain and routing" explains every stage |
+| G7 | Partial | (c) | QA.md unverified gate 5, Issues.md O8 (the publisher must supply it) |
+| G8 | Partial | (c) | QA.md unverified gate 5, Issues.md O8 |
+| G19 | Partial | (d) | mode buttons, slot Play (trigA/B parameters), Lock and New Take have no right-click menu (see the (d) list) |
+| G23 | Partial | (d) | PROGRESS.md still stops at session 1 (see the (d) list) |
+| V2 | Partial | (d) | JUCE has no weight 500; not recorded as a decision (see the (d) list) |
+| V5 | Partial | (d) | knobs scale with their cells; not recorded as a decision (see the (d) list) |
+| V8 | Partial | (a) | Theme.cpp drawLinearSlider ticks |
+| V12 | Partial | (d) | slot cards and illustrations are bordered panels; not recorded as a decision (see the (d) list) |
+| V13 | Missing | (b) | DECISIONS.md: the 80 ms value animation is not implemented for 1.0 |
+| V14 | Partial | (a) | ParamKnob up/down resize cursor |
+| J5 | Partial | (a) | see M4.2 (EQ coefficients excepted: C3.1) |
+| J9 | Partial | (d) | CI does not build with warnings as errors (see the (d) list) |
+| J10 | Partial | (c) | see T18 |
+
+### (d) still missing, prioritised
+
+**P2 (behaviour or verification the spec asks for)**
+1. R10.5 / T31: no GUI test of the Why-quiet texts, the greyed (dormant) states or accessibility (focus order,
+   titles, tooltips). Fix: add to `Tests/TestGui.cpp`:
+   - set up a still pot, Mic 0, a shielded touch and a line-source cable, then assert `explainQuiet` strings and
+     `setDormant` flags;
+   - walk the focus chain and assert that each focusable component has a title and a tooltip.
+   About 60 lines.
+2. M8.7: the keyboard focus order is implicit. Fix: `setExplicitFocusOrder` in `MainView` (header → mode row → slot
+   cards → illustrations → context panel → tabs → output strip) and in `ContextPanel`. About 20 lines.
+3. C3.1: Studio EQ coefficients are recomputed once per block, so automating EQ can zipper. Fix in
+   `StudioChain.h`: smooth HP/LP/tilt/peak frequency and gain per sample (or recompute coefficients every 32
+   samples from smoothed values). About 30 lines, plus a test in `TestScenarios`.
+4. R10.1: the per-source realism-table tests run only at 48 kHz / 256. Fix: parametrise the `Single` harness in
+   `Tests/TestSources.cpp` over {44.1 k, 96 k} × {64, 1024}. About 20 lines.
+
+**P3 (polish)**
+5. R9.2: dependent Studio controls are not greyed. Echo Time (Sync on), Echo Division (Sync off), Res Freq (Follow
+   MIDI on), Gate Division (Key not Steps) and the stage parameters while their stage or Studio is off should be
+   greyed with a reason. Fix: `StudioPanel.cpp` `setDormant` calls in `refresh()`.
+6. G19: no right-click menu on the mode buttons (parameter `mode`) or on the slot Play buttons (`trigA`/`trigB`).
+   Fix: call `showParamMenu` on popup-menu clicks in `MainView` and `SlotCard`.
+7. R7.5: no test that one linked gesture gives correlated contact transitions in both slots. Fix: add a test in
+   `TestScenarios` with `link` on.
+8. C7.1: no single test runs every monitor tap in both mono and stereo. Fix: a loop over layouts and taps in
+   `TestEngine`.
+9. J9: CI does not treat warnings as errors. Fix: add `-DCMAKE_COMPILE_WARNING_AS_ERROR=ON` to the configure step
+   in `.github/workflows/ci.yml`, once the build is warning-free.
+
+**Records only (no code)**
+10. I5.3, D19, M8.5, V2, V5, V12: add one line each to `DECISIONS.md`:
+    - lane events are scheduled per block on the audio thread (bounded, allocation-free) instead of a precompiled
+      table;
+    - no licence activation, with the extension point named;
+    - "advanced calibration" is fixed in `PhysicalLimits.h`, with no UI;
+    - JUCE fonts have no weight 500;
+    - knobs scale with their cells;
+    - slot cards are bordered panels.
+11. T29: add "low disk space: error path only, not tested" to the QA.md unverified gates.
+12. G23: bring `PROGRESS.md` up to date or point it at `TODO.md`.
+
+Not in this list, because they are pending release actions rather than gaps: recording the pluginval
+strictness-10 result and the release ZIP SHA-256 in `Docs/QA.md` (M1.5c, M1.5i, T18, T24, J10, E2).

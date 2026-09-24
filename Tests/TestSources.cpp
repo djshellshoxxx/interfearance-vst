@@ -7,11 +7,13 @@ using namespace ifxtest;
 
 namespace
 {
-constexpr double kFs = 48000.0;
+// the realism rows run at 48 kHz / 256 and again at other rates and block sizes (see the last test)
+double kFs = 48000.0;
+int kBlock = 256;
 
 struct Single
 {
-    Harness h { kFs, 2, 256 };
+    Harness h { kFs, 2, kBlock };
     explicit Single (SourceType t)
     {
         h.params = quietParams();
@@ -91,7 +93,7 @@ IFX_TEST (LooseJack, withdrawnPlugLosesThroughSignal)
     s.h.params[P::jkInsert] = 0.0f;
     auto in = sine (2, (int) kFs, 440.0, kFs);
     auto out = s.h.run (in);
-    IFX_CHECK (rmsRatio (slice (out, 4800, 40000), slice (in, 4800, 40000)) < 0.01);
+    IFX_CHECK (rmsRatio (slice (out, (int) (kFs * 0.1), (int) (kFs * 0.8)), slice (in, (int) (kFs * 0.1), (int) (kFs * 0.8))) < 0.01);
 }
 
 IFX_TEST (LooseJack, withdrawnPlugHumDependsOnShielding)
@@ -104,7 +106,7 @@ IFX_TEST (LooseJack, withdrawnPlugHumDependsOnShielding)
         s.h.params[P::jkInsert] = 0.0f;
         s.h.params[P::jkShield] = k == 0 ? 0.0f : 1.0f;
         auto out = s.h.runSilence ((int) kFs);
-        humE[k] = tone (slice (out, 9600, 38400), 50.0, kFs);
+        humE[k] = tone (slice (out, (int) (kFs * 0.2), (int) (kFs * 0.8)), 50.0, kFs);
     }
     IFX_CHECK (humE[0] > 1e-8);
     IFX_CHECK (humE[1] < humE[0] * 0.05);
@@ -335,8 +337,8 @@ IFX_TEST (CableHandling, tapIsShortAndDecays)
     s.h.params[P::cbMic] = 1.0f;
     s.h.pendingEvents.push_back ({ 1000, ControlEvent::GestureA, (int) GestureKind::Tap, 1.0f });
     auto out = s.h.runSilence ((int) kFs);
-    IFX_CHECK (peakOf (slice (out, 1000, 4800)) > 1e-3f);
-    IFX_CHECK (peakOf (slice (out, 30000, 18000)) < peakOf (slice (out, 1000, 4800)) * 0.01f);
+    IFX_CHECK (peakOf (slice (out, 1000, (int) (kFs * 0.1))) > 1e-3f);
+    IFX_CHECK (peakOf (slice (out, (int) (kFs * 0.625), (int) (kFs * 0.375))) < peakOf (slice (out, 1000, (int) (kFs * 0.1))) * 0.01f);
 }
 
 // =============================================================================
@@ -350,7 +352,7 @@ IFX_TEST (DirtyPot, cleanPotFollowsTaperWithoutScratch)
     s.h.params[P::ptTurn] = 0.5f;
     auto in = sine (2, (int) kFs, 440.0, kFs);
     auto out = s.h.run (in);
-    IFX_CLOSE (rmsRatio (slice (out, 4800, 40000), slice (in, 4800, 40000)), 0.1, 0.005);
+    IFX_CLOSE (rmsRatio (slice (out, (int) (kFs * 0.1), (int) (kFs * 0.8)), slice (in, (int) (kFs * 0.1), (int) (kFs * 0.8))), 0.1, 0.005);
     s.h.captureTap = Tap::FaultDifference;
     auto src = sine (2, (int) kFs, 440.0, kFs);
     sweep (s.h, P::ptTurn, 0.1f, 0.9f, 1.0, &src);
@@ -394,7 +396,7 @@ IFX_TEST (DirtyPot, heldStillStopsScratch)
     IFX_CHECK (s.events() == before);
     // D is a stable (static) resistive error: no noise, i.e. D is just a scaled copy of R
     auto d = s.h.capture;
-    auto dS = slice (d, 0, 48000);
+    auto dS = slice (d, 0, (int) kFs);
     const double hf = bandEnergy (dS, kFs, 3000.0, 15000.0, 10);
     IFX_CHECK (hf < 1e-9);
 }
@@ -466,3 +468,28 @@ IFX_TEST (DirtyPot, taperLawsAreMonotoneAndDistinct)
     IFX_CLOSE (DirtyPot::taperLaw (0.5f, 2), 0.9, 1e-3);
 }
 
+
+// =============================================================================
+// Every realism row above, again at other sample rates and host block sizes (audit R10.1)
+// =============================================================================
+IFX_TEST (Sources, realismRowsHoldAtOtherRatesAndBlockSizes)
+{
+    const double savedFs = kFs;
+    const int savedBlock = kBlock;
+    const std::pair<double, int> configs[] = { { 44100.0, 64 }, { 96000.0, 1024 } };
+    for (const auto& [fs, block] : configs)
+    {
+        kFs = fs;
+        kBlock = block;
+        for (const auto& e : Registry::get().all())
+            if (e.suite == "LooseJack" || e.suite == "PlugTouch" || e.suite == "CableHandling" || e.suite == "DirtyPot")
+            {
+                const auto before = Registry::get().getFailures().size();
+                e.fn();
+                if (Registry::get().getFailures().size() != before)
+                    IFX_CHECK_MSG (false, e.suite + "." + e.name + " failed at " + juce::String (fs, 0) + " Hz / block " + juce::String (block));
+            }
+    }
+    kFs = savedFs;
+    kBlock = savedBlock;
+}

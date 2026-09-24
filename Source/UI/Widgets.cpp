@@ -210,7 +210,7 @@ void ParamKnob::paint (juce::Graphics& g)
     if (style == Style::Horizontal)
     {
         auto top = r.removeFromTop (14);
-        Theme::drawLabel (g, label, top, juce::Justification::centredLeft, slider.isEnabled() ? Theme::textMuted : Theme::edge);
+        Theme::drawLabel (g, label, top, juce::Justification::centredLeft, slider.isEnabled() ? Theme::textMuted : Theme::textMuted.withAlpha (0.55f));
         g.setFont (Theme::valueFont (11.0f));
         g.setColour (active ? Theme::text : Theme::textMuted);
         g.drawText (valueText, top, juce::Justification::centredRight);
@@ -227,14 +227,14 @@ void ParamKnob::paint (juce::Graphics& g)
         }
         else if (limitedReason.isNotEmpty())
         {
-            g.setFont (Theme::bodyFont (9.5f));
+            g.setFont (Theme::bodyFont (10.0f));
             g.setColour (Theme::warning);
             g.drawFittedText (limitedReason, r.removeFromTop (14).reduced (8, 0), juce::Justification::centred, 1, 0.6f);
         }
         else
             r.removeFromTop (14);
         Theme::drawLabel (g, label, getLocalBounds().removeFromBottom (16), juce::Justification::centred,
-                          slider.isEnabled() ? Theme::textMuted : Theme::edge, 10.0f);
+                          slider.isEnabled() ? Theme::textMuted : Theme::textMuted.withAlpha (0.55f), 10.0f);
     }
     if (limitedReason.isNotEmpty())
     {
@@ -279,7 +279,8 @@ ParamToggle::ParamToggle (InterferenceProcessor& p, int paramIndex, const juce::
 
 void ParamToggle::mouseDown (const juce::MouseEvent& e)
 {
-    if (e.mods.isPopupMenu())
+    menuClick = e.mods.isPopupMenu();
+    if (menuClick)
     {
         showParamMenu (proc, index, *this);
         return;
@@ -287,12 +288,68 @@ void ParamToggle::mouseDown (const juce::MouseEvent& e)
     juce::TextButton::mouseDown (e);
 }
 
+void ParamToggle::mouseDrag (const juce::MouseEvent& e)
+{
+    if (! menuClick) // a right-drag must not press the button
+        juce::TextButton::mouseDrag (e);
+}
+
 void ParamToggle::mouseUp (const juce::MouseEvent& e)
 {
-    if (e.mods.isPopupMenu())
+    if (menuClick)
+    {
+        menuClick = false;
         return;
+    }
     juce::TextButton::mouseUp (e);
-    setTooltip (paramTooltip (proc, index));
+    const auto t = paramTooltip (proc, index);
+    setTooltip (dormantReason.isNotEmpty() ? t + "\n(" + dormantReason + ")" : t);
+}
+
+void ParamToggle::setDormant (bool dormant, const juce::String& reason)
+{
+    const auto r = dormant ? reason : juce::String();
+    if (isEnabled() == ! dormant && dormantReason == r)
+        return;
+    dormantReason = r;
+    setEnabled (! dormant);
+    const auto t = paramTooltip (proc, index);
+    setTooltip (r.isNotEmpty() ? t + "\n(" + r + ")" : t);
+}
+
+//==============================================================================
+ParamMenuButton::ParamMenuButton (InterferenceProcessor& p, int paramIndex, const juce::String& text)
+    : juce::TextButton (text), proc (p), index (paramIndex)
+{
+    setWantsKeyboardFocus (true);
+    setTitle (text.isNotEmpty() ? text : juce::String (paramInfo (index).name)); // callers may refine it
+}
+
+void ParamMenuButton::mouseDown (const juce::MouseEvent& e)
+{
+    menuClick = e.mods.isPopupMenu();
+    if (menuClick)
+    {
+        showParamMenu (proc, index, *this);
+        return;
+    }
+    juce::TextButton::mouseDown (e);
+}
+
+void ParamMenuButton::mouseDrag (const juce::MouseEvent& e)
+{
+    if (! menuClick)
+        juce::TextButton::mouseDrag (e);
+}
+
+void ParamMenuButton::mouseUp (const juce::MouseEvent& e)
+{
+    if (menuClick)
+    {
+        menuClick = false;
+        return;
+    }
+    juce::TextButton::mouseUp (e);
 }
 
 //==============================================================================
@@ -368,7 +425,7 @@ void ParamChoice::paint (juce::Graphics& g)
 {
     if (caption.isNotEmpty())
         Theme::drawLabel (g, caption, getLocalBounds().removeFromTop (14), juce::Justification::centredLeft,
-                          box.isEnabled() ? Theme::textMuted : Theme::edge, 10.0f);
+                          box.isEnabled() ? Theme::textMuted : Theme::textMuted.withAlpha (0.55f), 10.0f);
 }
 
 void ParamChoice::setDormant (bool dormant, const juce::String& reason)

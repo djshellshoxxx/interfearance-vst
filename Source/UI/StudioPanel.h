@@ -30,6 +30,8 @@ public:
 
 private:
     void select (int stage);
+    /** Greys out controls that do nothing in the current setting, with the reason (values kept). */
+    void updateDormancy();
     InterferenceProcessor& proc;
     ParamToggle studioOn, rawHw, keepExc;
     ParamChoice source;
@@ -95,10 +97,11 @@ public:
 
 private:
     InterferenceProcessor& proc;
-    ParamChoice mains, buzzType, dimKind, phone, gear, outlets, shield, iface;
+    ParamChoice mains, buzzType, dimKind, rfType, phone, gear, outlets, shield, iface;
     ParamKnob hum, buzz, dimmer, rf, phoneDist, run;
-    juce::String groundText;
-    juce::Rectangle<int> fieldHeader, phoneHeader, loopHeader, groundArea;
+    juce::Label groundReadout; // measured loop hum after the interface (a Label: screen readers see it)
+    juce::Rectangle<int> fieldHeader, phoneHeader, loopHeader;
+    int phoneDividerX = 0, bandBottom = 0; // 1 px separators between the groups (theme.md: lines, not boxes)
 };
 
 /** Output strip: Dry/Wet, output trim, monitor tap, ceiling, bypass, meters, record status. */

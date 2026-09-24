@@ -90,6 +90,7 @@ StudioPanel::StudioPanel (InterferenceProcessor& p)
         if (s < kStages - 1)
         {
             stageMeter[s].setTooltip (juce::String (stageNames[s]) + " meter: upper bar = stage input peak, lower bar = stage output peak (Studio branch).");
+            stageMeter[s].setTitle (juce::String (stageNames[s]) + " meter");
             addAndMakeVisible (stageMeter[s]);
         }
         for (auto* c : controls[s])
@@ -132,8 +133,76 @@ void StudioPanel::refresh()
         fb->setLimited (fbLimited ? juce::String ("Limited by loop stability") : juce::String());
         fb->setEffective (fbLimited ? t.fbEffective.load() : std::numeric_limits<float>::quiet_NaN());
     }
+    updateDormancy();
+
+    // take-and-reset: the engine accumulates each stage's peak since the last UI tick
+    auto& tel = const_cast<EngineTelemetry&> (t);
     for (int s = 0; s < kStages - 1; ++s)
-        stageMeter[s].setLevels (t.stageIn[s].load(), t.stageOut[s].load());
+        stageMeter[s].setLevels (tel.stageIn[s].exchange (0.0f), tel.stageOut[s].exchange (0.0f));
+}
+
+void StudioPanel::updateDormancy()
+{
+    const bool raw = rawValue (proc, P::rawHw) > 0.5f;
+    const bool on = rawValue (proc, P::studioOn) > 0.5f;
+    const juce::String chainWhy = raw ? juce::String ("Raw Hardware bypasses the Studio chain (settings kept)")
+                                : ! on ? juce::String ("Studio is off (settings kept)") : juce::String();
+
+    auto setDormant = [] (juce::Component* c, const juce::String& why)
+    {
+        const bool d = why.isNotEmpty();
+        if (auto* k = dynamic_cast<ParamKnob*> (c))         k->setDormant (d, why);
+        else if (auto* ch = dynamic_cast<ParamChoice*> (c)) ch->setDormant (d, why);
+        else if (auto* t = dynamic_cast<ParamToggle*> (c))  t->setDormant (d, why);
+    };
+    auto paramOf = [] (juce::Component* c)
+    {
+        if (auto* k = dynamic_cast<ParamKnob*> (c))   return k->getParamIndex();
+        if (auto* ch = dynamic_cast<ParamChoice*> (c)) return ch->getParamIndex();
+        if (auto* t = dynamic_cast<ParamToggle*> (c))  return t->getParamIndex();
+        return -1;
+    };
+
+    // one setting makes another irrelevant (checked only while the stage itself runs)
+    const bool sync = rawValue (proc, P::ecSync) > 0.5f;
+    const bool followMidi = rawValue (proc, P::rsMidi) > 0.5f;
+    const int gateMode = (int) rawValue (proc, P::gtMode);   // Through | Pulse | Choke
+    const int gateKey = (int) rawValue (proc, P::gtKey);     // Steps | MIDI | Sidechain | Envelope
+    const bool feedback = rawValue (proc, P::fbAmount) > 0.0f;
+    auto specific = [&] (int pi) -> juce::String
+    {
+        if (pi == P::ecTime && sync)                     return "Sync is on: Division sets the echo time";
+        if (pi == P::ecDiv && ! sync)                    return "Sync is off: Echo Time sets the echo time";
+        if (pi == P::rsFreq && followMidi)               return "Follow MIDI is on: the last played note sets the frequency";
+        if (pi == P::gtKey && gateMode != 1)             return "Key only matters in Pulse mode";
+        if (pi == P::gtDiv && (gateMode != 1 || gateKey != 0)) return gateMode != 1 ? "Division only matters in Pulse mode"
+                                                                                 : "Key is not Steps: the key signal, not the grid, opens the gate";
+        if ((pi == P::gtAttack || pi == P::gtRelease || pi == P::gtDepth) && gateMode == 0)
+            return "Mode is Through: the gate stays open";
+        if ((pi == P::fbTime || pi == P::fbHP || pi == P::fbLP) && ! feedback)
+            return "Feedback is 0 %: no loop to shape";
+        return {};
+    };
+
+    for (int s = 0; s < kStages; ++s)
+    {
+        juce::String stageWhy = chainWhy;
+        if (stageWhy.isEmpty() && stageToggles[s] >= 0 && rawValue (proc, stageToggles[s]) < 0.5f)
+            stageWhy = juce::String (stageNames[s]) + " is off (settings kept)";
+        for (auto* c : controls[s])
+        {
+            const int pi = paramOf (c);
+            if (pi == P::killFb || pi == P::killTail)
+            {
+                setDormant (c, chainWhy); // momentary kills stay usable while their stage is off
+                continue;
+            }
+            setDormant (c, stageWhy.isNotEmpty() ? stageWhy : specific (pi));
+        }
+    }
+    setDormant (&source, chainWhy);
+    setDormant (&level, chainWhy);
+    setDormant (&keepExc, raw ? juce::String() : juce::String ("Keep Excitation only matters while Raw Hardware is on"));
 }
 
 void StudioPanel::paint (juce::Graphics& g)
@@ -345,30 +414,41 @@ void CreatePanel::resized()
     auto r = getLocalBounds();
     r.removeFromTop (22);
     auto row = r.removeFromTop (62);
-    excType.setBounds (row.removeFromLeft (170).reduced (2).withHeight (44));
-    excLevel.setBounds (row.removeFromLeft (70));
-    auto t = row.removeFromLeft (150);
+    // natural widths sum to 828 px; narrower panels (706 px at the 1000 px minimum window) scale
+    // every cell down so Record never leaves the panel (button text shrinks to 70 % before eliding)
+    const float k = juce::jmin (1.0f, (float) row.getWidth() / 828.0f);
+    auto cell = [&row, k] (int natural) { return row.removeFromLeft (juce::roundToInt ((float) natural * k)); };
+    excType.setBounds (cell (170).reduced (2).withHeight (44));
+    excLevel.setBounds (cell (70));
+    auto t = cell (150);
     keepExc.setBounds (t.removeFromTop (30).reduced (2));
     laneOn.setBounds (t.removeFromTop (30).reduced (2));
-    row.removeFromLeft (8);
-    playOnce.setBounds (row.removeFromLeft (170).withSizeKeepingCentre (170, 28));
-    render.setBounds (row.removeFromLeft (130).withSizeKeepingCentre (122, 28));
-    record.setBounds (row.removeFromLeft (130).withSizeKeepingCentre (122, 28));
+    cell (8);
+    playOnce.setBounds (cell (170).reduced (2, 0).withSizeKeepingCentre (juce::roundToInt (166.0f * k) - 4, 28));
+    render.setBounds (cell (130).withSizeKeepingCentre (juce::roundToInt (122.0f * k), 28));
+    record.setBounds (row.withWidth (std::min (row.getWidth(), juce::roundToInt (130.0f * k))).withSizeKeepingCentre (
+                          std::min (row.getWidth(), juce::roundToInt (122.0f * k)), 28));
 }
 
 //==============================================================================
 EnvironmentPanel::EnvironmentPanel (InterferenceProcessor& p)
     : proc (p),
       mains (p, P::mains, "Mains"), buzzType (p, P::buzzType, "Buzz Source"), dimKind (p, P::dimKind, "Dimmer Kind"),
-      phone (p, P::gsm, "2G Phone"), gear (p, P::glGear, "Other Gear"), outlets (p, P::glOutlets, "Outlets"),
+      rfType (p, P::rfType, "Transmitter"), phone (p, P::gsm, "2G Phone"), gear (p, P::glGear, "Other Gear"), outlets (p, P::glOutlets, "Outlets"),
       shield (p, P::glShield, "Cable Shield"), iface (p, P::glIface, "Interface"),
       hum (p, P::hum, ParamKnob::Style::SmallKnob), buzz (p, P::buzz, ParamKnob::Style::SmallKnob),
       dimmer (p, P::dimBright, ParamKnob::Style::SmallKnob), rf (p, P::rf, ParamKnob::Style::SmallKnob),
-      phoneDist (p, P::gsmDist, ParamKnob::Style::SmallKnob, "Distance"), run (p, P::glRun, ParamKnob::Style::SmallKnob)
+      phoneDist (p, P::gsmDist, ParamKnob::Style::SmallKnob, "Distance"), run (p, P::glRun, ParamKnob::Style::Horizontal)
 {
-    for (auto* c : std::initializer_list<juce::Component*> { &mains, &hum, &buzz, &buzzType, &dimmer, &dimKind, &rf, &phone, &phoneDist,
+    for (auto* c : std::initializer_list<juce::Component*> { &mains, &hum, &buzz, &buzzType, &dimmer, &dimKind, &rf, &rfType, &phone, &phoneDist,
                                                              &gear, &outlets, &run, &shield, &iface })
         addAndMakeVisible (c);
+    groundReadout.setFont (Theme::monoFont (11.0f));
+    groundReadout.setJustificationType (juce::Justification::centredRight);
+    groundReadout.setColour (juce::Label::textColourId, Theme::textMuted);
+    groundReadout.setTitle ("Ground loop hum");
+    groundReadout.setTooltip ("The engine's measured ground-loop hum after the interface (peak of the last audio block).");
+    addAndMakeVisible (groundReadout);
 }
 
 void EnvironmentPanel::refresh()
@@ -380,6 +460,7 @@ void EnvironmentPanel::refresh()
     dimmer.setDormant (! buzzOn || ! dimmerSource, dimWhy);
     dimKind.setDormant (! buzzOn || ! dimmerSource, dimWhy);
     buzzType.setDormant (! buzzOn, "Buzz Band is 0: no buzz in the room");
+    rfType.setDormant (rawValue (proc, P::rf) <= 0.0f, "Interference is 0: no transmitter nearby");
 
     const int g = (int) rawValue (proc, P::glGear);
     const juce::String loopWhy = "Other Gear is Off: no ground loop";
@@ -393,60 +474,67 @@ void EnvironmentPanel::refresh()
     const float db = proc.telemetry().groundLoopDb.load();
     juce::String t;
     if (g == 0)
-        t = "Ground loop: off";
+        t = "loop off";
     else if (db <= -119.0f)
-        t = "Ground loop: -inf dBFS";
+        t = "after the interface: -inf dBFS";
     else
-        t = "Ground loop: " + juce::String (db, 0) + " dBFS";
-    if (t != groundText)
-    {
-        groundText = t;
-        repaint (groundArea.expanded (0, 20));
-    }
+        t = "after the interface: " + juce::String (db, 0) + " dBFS";
+    groundReadout.setText (t, juce::dontSendNotification); // repaints only when the text changes
+    groundReadout.setColour (juce::Label::textColourId, g == 0 ? Theme::textMuted : Theme::text);
 }
 
 void EnvironmentPanel::paint (juce::Graphics& g)
 {
     Theme::drawSectionHeader (g, "Environment (shared by both slots)", getLocalBounds().removeFromTop (20));
-    Theme::drawLabel (g, "Mains field, buzz and radio", fieldHeader, juce::Justification::centredLeft, Theme::textMuted, 9.5f);
-    Theme::drawLabel (g, "2G phone", phoneHeader, juce::Justification::centredLeft, Theme::textMuted, 9.5f);
-    Theme::drawLabel (g, "Ground loop through the cable shield", loopHeader, juce::Justification::centredLeft, Theme::textMuted, 9.5f);
-    g.setFont (Theme::monoFont (11.5f));
-    g.setColour ((int) rawValue (proc, P::glGear) == 0 ? Theme::textMuted : Theme::text);
-    g.drawFittedText (groundText, groundArea, juce::Justification::centredLeft, 1);
-    g.setFont (Theme::bodyFont (10.5f));
-    g.setColour (Theme::textMuted);
-    g.drawFittedText ("hum after the interface (measured)", groundArea.translated (0, 16), juce::Justification::centredLeft, 1);
+    Theme::drawLabel (g, "Mains field, buzz and radio", fieldHeader, juce::Justification::centredLeft, Theme::textMuted, 10.0f);
+    Theme::drawLabel (g, "2G phone", phoneHeader, juce::Justification::centredLeft, Theme::textMuted, 10.0f);
+    Theme::drawLabel (g, "Ground loop through the cable shield", loopHeader, juce::Justification::centredLeft, Theme::textMuted, 10.0f);
+    // groups are separated by 1 px lines, never boxes inside boxes (theme.md)
+    g.setColour (Theme::edge);
+    if (phoneDividerX > 0 && bandBottom > fieldHeader.getY())
+        g.fillRect (phoneDividerX, fieldHeader.getY(), 1, bandBottom - fieldHeader.getY());
+    if (bandBottom > 0)
+        g.fillRect (0, bandBottom + 3, getWidth(), 1);
 }
 
 void EnvironmentPanel::resized()
 {
+    // Two bands that fit the 208 px the bottom area gives at the minimum window height:
+    //   field band: five topic columns, each a level knob above its source / kind choice
+    //   loop band:  one row of choices plus a horizontal Cable Run slider, readout in its header
+    // Every choice is at least ~120 px wide at the minimum window width, so its text stays readable.
+    constexpr int headerH = 14, choiceH = 42, loopRowH = 42, gap = 8;
     auto r = getLocalBounds();
-    r.removeFromTop (22);
-    const int cw = r.getWidth() / 9;
-    auto place = [] (juce::Component& c, juce::Rectangle<int> cell)
+    r.removeFromTop (22); // section header
+    const int w = r.getWidth();
+    const int knobH = juce::jlimit (52, 76, r.getHeight() - (headerH + choiceH + gap + headerH + loopRowH));
+
+    const int colW = w / 5;
+    auto head1 = r.removeFromTop (headerH);
+    fieldHeader = head1.withWidth (colW * 4).reduced (2, 0);
+    phoneHeader = head1.withTrimmedLeft (colW * 4).reduced (8, 0);
+    phoneDividerX = head1.getX() + colW * 4;
+    auto knobRow = r.removeFromTop (knobH);
+    auto choiceRow = r.removeFromTop (choiceH);
+    bandBottom = choiceRow.getBottom();
+    const std::pair<juce::Component*, juce::Component*> columns[] = {
+        { &hum, &mains }, { &buzz, &buzzType }, { &dimmer, &dimKind }, { &rf, &rfType }, { &phoneDist, &phone } };
+    for (const auto& col : columns)
     {
-        if (dynamic_cast<ParamChoice*> (&c) != nullptr)
-            c.setBounds (cell.withSizeKeepingCentre (cell.getWidth() - 4, 42));
-        else
-            c.setBounds (cell.reduced (2, 0));
-    };
+        col.first->setBounds (knobRow.removeFromLeft (colW).reduced (4, 0));
+        col.second->setBounds (choiceRow.removeFromLeft (colW).reduced (4, 0));
+    }
 
-    // row 1: mains field, buzz, dimmer, RF | 2G phone
-    auto head1 = r.removeFromTop (14);
-    fieldHeader = head1.withWidth (cw * 7).reduced (2, 0);
-    phoneHeader = head1.withTrimmedLeft (cw * 7).reduced (2, 0);
-    auto row1 = r.removeFromTop (juce::jlimit (56, 70, (r.getHeight() - 18) / 2));
-    for (auto* c : std::initializer_list<juce::Component*> { &mains, &hum, &buzz, &buzzType, &dimmer, &dimKind, &rf, &phone, &phoneDist })
-        place (*c, row1.removeFromLeft (cw));
-
-    // row 2: ground loop + measured readout
-    r.removeFromTop (4);
-    loopHeader = r.removeFromTop (14).reduced (2, 0);
-    auto row2 = r.removeFromTop (std::min (70, r.getHeight()));
-    for (auto* c : std::initializer_list<juce::Component*> { &gear, &outlets, &run, &shield, &iface })
-        place (*c, row2.removeFromLeft (cw));
-    groundArea = row2.reduced (8, 0).withHeight (18).withY (row2.getCentreY() - 16);
+    r.removeFromTop (gap);
+    auto head2 = r.removeFromTop (headerH);
+    groundReadout.setBounds (head2.removeFromRight (std::min (240, w / 2)).withTrimmedRight (4));
+    loopHeader = head2.reduced (2, 0);
+    auto loopRow = r.removeFromTop (loopRowH);
+    // Interface gets a wider cell for "Balanced + Input Transformer"
+    const int share = w * 10 / 53;
+    for (auto* c : std::initializer_list<juce::Component*> { &gear, &outlets, &run, &shield })
+        c->setBounds (loopRow.removeFromLeft (share).reduced (4, 0));
+    iface.setBounds (loopRow.reduced (4, 0));
 }
 
 //==============================================================================

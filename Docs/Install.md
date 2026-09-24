@@ -1,7 +1,9 @@
 # Install, update, uninstall
 
 Interference has no installer, runtime, licence server or internet dependency. The release ZIP contains the
-plug-in bundle, the stand-alone app and these documents.
+plug-in bundle, the stand-alone app, these documents and the third-party licence texts. The C++ runtime is linked
+statically, so no Visual C++ Redistributable needs to be installed. `SIGNATURE.txt` in the ZIP says whether the
+binaries are code-signed, and by whom.
 
 ## Requirements
 
@@ -11,7 +13,8 @@ plug-in bundle, the stand-alone app and these documents.
 
 ## Install (Windows)
 
-1. Unzip `Interference-1.0.0-win64.zip`.
+1. Windows may block files from a downloaded ZIP. Right-click the ZIP, choose Properties, tick *Unblock*, then OK.
+   Then unzip `Interference-1.0.0-win64.zip`.
 2. Copy the **folder** `Interference.vst3` to `C:\Program Files\Common Files\VST3\` (administrator rights needed).
    Copy the whole bundle folder, not just the DLL inside it.
 3. Start your DAW and rescan plug-ins. Interference appears as an audio effect by *Interference Audio*.
@@ -30,7 +33,10 @@ in any PATCH release.
 2. Optional: delete your data.
    - `Documents\Interference\Presets\`: your user presets (`.ifxpreset`).
    - `Documents\Interference\Support\`: crash logs and troubleshooting files.
-   - `%APPDATA%\Interference\Interference.settings`: options (tooltips, last render folder).
+   - `%APPDATA%\Interference\Interference Options.settings`: the plug-in's options (tooltips, editor size, last
+     render folder).
+   - `%APPDATA%\Interference\Interference.settings`: the stand-alone app's audio / MIDI device setup (only if you
+     used the stand-alone app).
 3. Rescan plug-ins in the DAW, or clear its plug-in cache.
 
 Rendered and recorded WAV files are saved wherever you chose (default: your Music folder) and are never deleted by
@@ -41,16 +47,20 @@ the plug-in.
 | What | Where | Written when |
 |---|---|---|
 | User presets | `Documents\Interference\Presets\*.ifxpreset` | Save / Save As |
-| Options | `%APPDATA%\Interference\Interference.settings` | Changing Options; deleted by Hard reset |
+| Options (plug-in and stand-alone) | `%APPDATA%\Interference\Interference Options.settings` | Changing Options, closing the editor; deleted by Hard reset |
+| Stand-alone device setup | `%APPDATA%\Interference\Interference.settings` | Only by the stand-alone app (audio interface, MIDI inputs); not touched by Hard reset |
 | Renders / recordings | chosen in the file dialog (remembered) | Render WAV…, Record |
 | Crash logs | `Documents\Interference\Support\Interference_CrashLog_<date>.log` | Only while *Create log file on crash* is ticked |
 | Troubleshooting files | `Documents\Interference\Support\Interference_Troubleshooting_<date>.txt` | Only when you press *Export troubleshooting file* |
 
 Presets contain no paths, device names or audio. Nothing is written during ordinary processing.
 
+`Documents` means your Windows Documents folder wherever it really is. If Windows redirects it to OneDrive (for
+example `C:\Users\<you>\OneDrive\Documents`), the Interference folders follow it there.
+
 **Moving the data folder (portable use, tests).** If the environment variable `IFX_DATA_ROOT` is set to an absolute
 folder, presets go to `<IFX_DATA_ROOT>/Presets` and support files to `<IFX_DATA_ROOT>/Support`, and the options move to
-`<IFX_DATA_ROOT>/Options/Interference.settings`, instead of the locations above. The test suites and CI use this so
+`<IFX_DATA_ROOT>/Options/Interference Options.settings`, instead of the locations above. The test suites and CI use this so
 they never touch your Documents folder.
 
 ## Troubleshooting
@@ -58,7 +68,8 @@ they never touch your Documents folder.
 **The plug-in does not appear in the DAW**
 - Check the bundle is `C:\Program Files\Common Files\VST3\Interference.vst3` (a folder), not inside a VST2 folder.
 - Check the host scans that folder, then rescan or clear its plug-in cache. The host must be 64-bit.
-- Windows may block files unzipped from the internet: right-click the ZIP → Properties → *Unblock* before unzipping.
+- Windows may block files unzipped from the internet: right-click the ZIP → Properties → *Unblock* before unzipping
+  (see Install, step 1).
 
 **Presets do not show in the browser**
 They must be `.ifxpreset` files directly inside `Documents\Interference\Presets` (use *Options → Open preset folder in
@@ -72,7 +83,8 @@ circuit with no hum is silent by design.
 Open *Help → Debug…*, tick **Create log file on crash**, then reproduce the problem. Afterwards, send the newest
 `.log` file, a troubleshooting file (*Export troubleshooting file*) and a description of what you were doing to
 support. If the plug-in keeps misbehaving, **Reset all settings to default (hard reset)** clears MIDI mappings, A/B
-and options and deletes the options file. Presets and audio are kept.
+and options and deletes the plug-in's options file (`Interference Options.settings`). Presets, audio and the
+stand-alone app's device setup are kept.
 
 The log catches access violations and other unhandled exceptions, and aborts. It chains to the host's own handlers,
 so the host still sees the crash. Some crashes cannot be logged. Fast-fail terminations (security-check failures,

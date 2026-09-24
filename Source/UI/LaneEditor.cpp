@@ -226,8 +226,11 @@ void StepGrid::showStepMenu (int lane, int step)
     // industrial spec 3: a Gap is a valid physical gesture (jack pulled open, pot turned to its
     // minimum), never a hidden gate; other sources have no such gesture
     const auto laneSource = proc.slotType (lane);
-    const bool gapPossible = laneSource == SourceType::LooseJack || laneSource == SourceType::DirtyPot;
-    m.addItem (7, laneSource == SourceType::DirtyPot ? "Gap: turn the pot to minimum for the step"
+    // a pot at minimum is only silent as a level pot; the Tone circuit just darkens
+    const bool toneCircuit = laneSource == SourceType::DirtyPot && proc.param (P::ptCircuit)->getValue() > 0.5f;
+    const bool gapPossible = laneSource == SourceType::LooseJack || (laneSource == SourceType::DirtyPot && ! toneCircuit);
+    m.addItem (7, laneSource == SourceType::DirtyPot ? (toneCircuit ? "Gap: not with the Tone circuit (pot at minimum only darkens)"
+                                                                    : "Gap: turn the pot to minimum for the step")
                                                      : "Gap: pull the jack open for the step", gapPossible);
     m.addSeparator();
     m.addItem (4, "Copy step");
@@ -367,6 +370,11 @@ LaneEditor::LaneEditor (InterferenceProcessor& p)
         mute[l].setButtonText ("M");
         solo[l].setButtonText ("S");
         clearLane[l].setButtonText ("Clr");
+        lenMinus[l].setTitle ("Lane " + name + ": fewer steps");
+        lenPlus[l].setTitle ("Lane " + name + ": more steps");
+        mute[l].setTitle ("Mute lane " + name);
+        solo[l].setTitle ("Solo lane " + name);
+        clearLane[l].setTitle ("Clear lane " + name);
         lenMinus[l].setTooltip ("Shorter lane " + name + " (1-64 steps). Lanes can differ: e.g. A: 16 against B: 12.");
         lenPlus[l].setTooltip ("Longer lane " + name + ".");
         mute[l].setTooltip ("Mute lane " + name);
@@ -401,13 +409,14 @@ void LaneEditor::refresh()
     else
         c = t.clockRunning.load() ? "Internal clock " + juce::String (t.bpm.load(), 1) + " BPM (no host transport)" : "No host transport: internal clock stopped";
     c << "   A: " << pat.lanes[0].length << "   B: " << pat.lanes[1].length;
-    const int la = pat.lanes[0].length, lb = pat.lanes[1].length;
+    const int la = std::max (1, pat.lanes[0].length), lb = std::max (1, pat.lanes[1].length); // setPattern is public: never 0
     const int cycle = la / std::gcd (la, lb) * lb; // at most 64 x 63 = 4032 steps
     // loop-phase indicator: position inside the combined A/B cycle while the lane runs
     const bool running = t.clockRunning.load() && (t.laneStep[0].load() >= 0 || t.laneStep[1].load() >= 0);
     if (running)
     {
-        const double stepBeats = divisionBeats ((int) proc.apvts.getRawParameterValue ("lane_div")->load());
+        auto* laneDiv = proc.param (P::laneDiv); // indexed, not a string lookup at 30 Hz
+        const double stepBeats = divisionBeats (juce::roundToInt (laneDiv->convertFrom0to1 (laneDiv->getValue())));
         const auto globalStep = (juce::int64) std::floor (t.ppq.load() / stepBeats);
         c << "   cycle " << (int) (((globalStep % cycle) + cycle) % cycle) + 1 << " / " << cycle;
     }

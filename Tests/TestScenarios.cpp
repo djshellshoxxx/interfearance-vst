@@ -1040,3 +1040,114 @@ IFX_TEST (Scenarios, sourceImpedanceScalesOnlyDrivenNodeMainsPickup)
             IFX_CHECK_MSG (std::abs (ratio - 1.0) < 1.0e-3, name + ": should not depend on the source, ratio " + juce::String (ratio, 5));
     }
 }
+
+//==============================================================================
+// R7.5 (realism spec 7): "simultaneous pops caused by one linked gesture should be correlated with
+// plausible simultaneous contact transitions, not two identical layered sample impulses". One
+// gesture on slot A, shared with slot B only through Linked Gesture: both slots' contact events
+// and pops follow that gesture in time, but each keeps its own contacts, wear and random
+// stream, so the two pop tracks are different waveforms.
+IFX_TEST (Scenarios, linkedGesturePopsAreCorrelatedNotLayeredCopies)
+{
+    const int block = 64, n = (int) (kFs * 6.0);
+    auto gestureStart = [] (int k) { return (int) ((0.1 + 1.0 * k) * kFs); };  // one Wiggle per second
+    auto inWindow = [&] (int sample)
+    {
+        for (int k = 0; k < 6; ++k)
+            if (sample >= gestureStart (k) && sample < gestureStart (k) + (int) (0.5 * kFs)) return true;
+        return false;
+    };
+    struct Run { juce::AudioBuffer<float> pops; std::vector<int> evA, evB; };
+    auto render = [&] (bool link, float jackPop, float potBias)
+    {
+        Run r;
+        Harness h (kFs, 1, block);
+        h.params = quietParams();
+        h.params[P::linkGesture] = link ? 1.0f : 0.0f;
+        h.params[P::gestureA] = 0.0f;              // Wiggle
+        h.params[P::jkInsert] = 0.75f;             // plug part way in, over its worn zone
+        h.params[P::jkWearPos] = 0.75f;
+        h.params[P::jkWear] = 0.8f;
+        h.params[P::jkWiggle] = 0.0f;              // moves only when the gesture moves it
+        h.params[P::jkIntermit] = 0.0f;
+        h.params[P::jkPressure] = 0.3f;
+        h.params[P::jkPop] = jackPop;
+        h.params[P::ptTaper] = 0.0f;               // linear: the jack's pops pass the pot at half level
+        h.params[P::ptTurn] = 0.5f;                // knob resting on its worn arc
+        h.params[P::ptWearPos] = 0.5f;
+        h.params[P::ptWearWidth] = 0.2f;
+        h.params[P::ptDirt] = 0.8f;
+        h.params[P::ptBias] = potBias;
+        h.params[P::monitor] = (float) (int) Tap::Artifacts;
+        h.setSlots (SourceType::LooseJack, SourceType::DirtyPot);
+        for (int k = 0; k < 6; ++k)
+            h.pendingEvents.push_back ({ gestureStart (k), ControlEvent::GestureA, (int) GestureKind::Wiggle, 1.0f });
+        r.pops.setSize (1, n);
+        uint32_t lastA = 0, lastB = 0;
+        for (int pos = 0; pos < n; pos += block)
+        {
+            const auto o = h.runSilence (block);
+            r.pops.copyFrom (0, pos, o, 0, 0, block);
+            const auto& t = h.engine->telemetry;
+            const uint32_t a = t.slot[0].openEvents.load() + t.slot[0].resistiveEvents.load();
+            const uint32_t b = t.slot[1].openEvents.load() + t.slot[1].resistiveEvents.load();
+            for (uint32_t e = lastA; e < a; ++e) r.evA.push_back (pos);
+            for (uint32_t e = lastB; e < b; ++e) r.evB.push_back (pos);
+            lastA = a;
+            lastB = b;
+        }
+        return r;
+    };
+    auto shareInWindows = [&] (const std::vector<int>& ev)
+    {
+        int in = 0;
+        for (int s : ev) if (inWindow (s)) ++in;
+        return ev.empty() ? 0.0 : (double) in / (double) ev.size();
+    };
+    auto envelope = [] (const juce::AudioBuffer<float>& b)
+    {
+        std::vector<double> e ((size_t) b.getNumSamples());
+        const double a = 1.0 - std::exp (-1.0 / (0.02 * kFs));
+        double z = 0.0;
+        for (int i = 0; i < b.getNumSamples(); ++i) { z += (std::abs ((double) b.getSample (0, i)) - z) * a; e[(size_t) i] = z; }
+        return e;
+    };
+    auto pearson = [] (const std::vector<double>& x, const std::vector<double>& y)
+    {
+        double mx = 0, my = 0;
+        for (size_t i = 0; i < x.size(); ++i) { mx += x[i]; my += y[i]; }
+        mx /= (double) x.size(); my /= (double) y.size();
+        double sxy = 0, sxx = 0, syy = 0;
+        for (size_t i = 0; i < x.size(); ++i) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) * (x[i] - mx); syy += (y[i] - my) * (y[i] - my); }
+        return sxy / std::sqrt (std::max (1.0e-30, sxx * syy));
+    };
+
+    // without the link, the gesture on slot A never reaches slot B: its pot stays still and silent
+    const auto unlinked = render (false, 0.0f, 1.0f);
+    IFX_CHECK_MSG (unlinked.evB.empty(), juce::String ((int) unlinked.evB.size()) + " pot events without a link");
+    IFX_CHECK (peakOf (unlinked.pops) < 1.0e-7f);
+
+    // linked: pops from each slot isolated by giving only that slot a bias (contacts are unchanged)
+    const auto jackPops = render (true, 1.0f, 0.0f), potPops = render (true, 0.0f, 1.0f);
+    IFX_CHECK_MSG (! jackPops.evA.empty() && ! jackPops.evB.empty(),
+                   "events: jack " + juce::String ((int) jackPops.evA.size()) + ", pot " + juce::String ((int) jackPops.evB.size()));
+    IFX_CHECK (jackPops.evA == potPops.evA && jackPops.evB == potPops.evB);   // bias never changes contact state
+    IFX_CHECK_MSG (shareInWindows (jackPops.evA) >= 0.9 && shareInWindows (jackPops.evB) >= 0.9,
+                   "events outside the gesture: jack " + juce::String (shareInWindows (jackPops.evA), 2)
+                       + ", pot " + juce::String (shareInWindows (jackPops.evB), 2));
+    IFX_CHECK (peakOf (jackPops.pops) > 1.0e-4f && peakOf (potPops.pops) > 1.0e-4f);
+
+    // correlated in time (both follow the one gesture) ...
+    const double envCorr = pearson (envelope (jackPops.pops), envelope (potPops.pops));
+    IFX_CHECK_MSG (envCorr > 0.3, "pop envelopes correlate only " + juce::String (envCorr, 3));
+    // ... but not the same impulses layered twice: different waveforms, different event timing
+    std::vector<double> xa, xb;
+    for (int i = 0; i < n; ++i) { xa.push_back (jackPops.pops.getSample (0, i)); xb.push_back (potPops.pops.getSample (0, i)); }
+    const double waveCorr = pearson (xa, xb);
+    IFX_CHECK_MSG (std::abs (waveCorr) < 0.9, "pop waveforms are near copies: r = " + juce::String (waveCorr, 3));
+    int common = 0;
+    for (int s : jackPops.evA)
+        if (std::find (jackPops.evB.begin(), jackPops.evB.end(), s) != jackPops.evB.end()) ++common;
+    const double overlap = (double) common / (double) std::max<size_t> (1, jackPops.evA.size() + jackPops.evB.size() - (size_t) common);
+    IFX_CHECK_MSG (overlap < 0.9, "event timing is identical in both slots (overlap " + juce::String (overlap, 2) + ")");
+}

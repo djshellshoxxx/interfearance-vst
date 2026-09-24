@@ -172,6 +172,22 @@ void InterferenceLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y,
                                              : juce::Rectangle<float> (r.getX(), r.getCentreY() - 2.0f, r.getWidth(), 4.0f);
     g.setColour (edge);
     g.fillRoundedRectangle (trackR, 2.0f);
+    // theme.md: 1 px muted ticks every 1/8 of the travel, outside the track
+    g.setColour (textMuted.withAlpha (0.6f));
+    for (int t = 0; t <= 8; ++t)
+    {
+        const float f = (float) t / 8.0f;
+        if (vertical)
+        {
+            const float ty = r.getBottom() - f * r.getHeight();
+            g.fillRect (trackR.getRight() + 3.0f, ty - 0.5f, 3.0f, 1.0f);
+        }
+        else
+        {
+            const float tx = r.getX() + f * r.getWidth();
+            g.fillRect (tx - 0.5f, trackR.getBottom() + 3.0f, 1.0f, 3.0f);
+        }
+    }
     juce::Rectangle<float> fillR = vertical ? trackR.withTop (pos) : trackR.withRight (pos);
     g.setColour (s.isEnabled() ? accent : textMuted);
     g.fillRoundedRectangle (fillR, 2.0f);

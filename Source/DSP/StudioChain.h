@@ -108,6 +108,8 @@ public:
         chokeActive = false;
         fbCleared = tailCleared = false;
         snap = true;
+        snapEq = true;
+        eqCounter = 0;
         for (int st = 0; st < NumStages; ++st) pkIn[st] = pkOut[st] = 0.0f;
     }
 
@@ -123,16 +125,18 @@ public:
         on[Gate] = p.on (P::gtOn);
         on[Echo] = p.on (P::ecOn);
 
-        // EQ coefficients (block rate)
-        const bool hp = p[P::eqHP] > 20.5f, lp = p[P::eqLP] < 19999.0f;
-        for (int ch = 0; ch < 2; ++ch)
+        // EQ targets: frequencies glide in the log domain, gains linearly, and the coefficients follow
+        // every 16 samples while moving (no zipper when the EQ is automated)
+        eqT[0] = std::log2 (std::max (20.0f, p[P::eqHP]));
+        eqT[1] = std::log2 (std::max (20.0f, p[P::eqLP]));
+        eqT[2] = p[P::eqTilt];
+        eqT[3] = std::log2 (std::max (20.0f, p[P::eqPkFreq]));
+        eqT[4] = p[P::eqPkGain];
+        if (snapEq)
         {
-            if (hp) eq[ch][0].highpass (p[P::eqHP], 0.7071, fs); else eq[ch][0].setIdentity();
-            if (lp) eq[ch][1].lowpass (p[P::eqLP], 0.7071, fs); else eq[ch][1].setIdentity();
-            const float tilt = p[P::eqTilt];
-            if (std::abs (tilt) > 0.01f) { eq[ch][2].lowShelf (1000.0, -tilt * 0.5, fs); eq[ch][3].highShelf (1000.0, tilt * 0.5, fs); }
-            else { eq[ch][2].setIdentity(); eq[ch][3].setIdentity(); }
-            if (std::abs (p[P::eqPkGain]) > 0.01f) eq[ch][4].peak (p[P::eqPkFreq], 0.7, p[P::eqPkGain], fs); else eq[ch][4].setIdentity();
+            snapEq = false;
+            for (int k = 0; k < 5; ++k) eqS[k] = eqT[k];
+            updateEqCoefficients();
         }
 
         // Drive
@@ -236,6 +240,16 @@ public:
         {
             stageMix[s] = on[s] ? std::min (1.0f, stageMix[s] + stageStep) : std::max (0.0f, stageMix[s] - stageStep);
             wet[s] = smoothTo (wet[s], wetT[s], stageSmooth);
+        }
+        if (eqS[0] != eqT[0] || eqS[1] != eqT[1] || eqS[2] != eqT[2] || eqS[3] != eqT[3] || eqS[4] != eqT[4])
+        {
+            for (int k = 0; k < 5; ++k)
+                eqS[k] = smoothTo (eqS[k], eqT[k], stageSmooth);
+            if (++eqCounter >= 16 || (eqS[0] == eqT[0] && eqS[1] == eqT[1] && eqS[2] == eqT[2] && eqS[3] == eqT[3] && eqS[4] == eqT[4]))
+            {
+                eqCounter = 0;
+                updateEqCoefficients();
+            }
         }
         drivePre = smoothTo (drivePre, drivePreT, stageSmooth);
         drivePost = smoothTo (drivePost, drivePostT, stageSmooth);
@@ -430,14 +444,35 @@ public:
     }
 
     /** Block peaks per stage (input / output of the stages that ran), for the stage meters.
-        Reads and clears; called by the engine once per block. */
+        Accumulates the maximum into the telemetry until the UI takes it (exchange (0)), so no
+        peak between two UI ticks is lost; clears the local peaks. Called once per block. */
     void takeStagePeaks (std::atomic<float>* in, std::atomic<float>* out) noexcept
     {
+        auto raise = [] (std::atomic<float>& a, float v) noexcept
+        {
+            float cur = a.load (std::memory_order_relaxed);
+            while (v > cur && ! a.compare_exchange_weak (cur, v, std::memory_order_relaxed)) {}
+        };
         for (int st = 0; st < NumStages; ++st)
         {
-            in[st].store (pkIn[st], std::memory_order_relaxed);
-            out[st].store (pkOut[st], std::memory_order_relaxed);
+            raise (in[st], pkIn[st]);
+            raise (out[st], pkOut[st]);
             pkIn[st] = pkOut[st] = 0.0f;
+        }
+    }
+
+    void updateEqCoefficients() noexcept
+    {
+        const double hpF = std::exp2 ((double) eqS[0]), lpF = std::exp2 ((double) eqS[1]), pkF = std::exp2 ((double) eqS[3]);
+        const bool hp = hpF > 20.5, lp = lpF < 19999.0;
+        const float tilt = eqS[2], pkG = eqS[4];
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            if (hp) eq[ch][0].highpass (hpF, 0.7071, fs); else eq[ch][0].setIdentity();
+            if (lp) eq[ch][1].lowpass (lpF, 0.7071, fs); else eq[ch][1].setIdentity();
+            if (std::abs (tilt) > 0.01f) { eq[ch][2].lowShelf (1000.0, -tilt * 0.5, fs); eq[ch][3].highShelf (1000.0, tilt * 0.5, fs); }
+            else { eq[ch][2].setIdentity(); eq[ch][3].setIdentity(); }
+            if (std::abs (pkG) > 0.01f) eq[ch][4].peak (pkF, 0.7, pkG, fs); else eq[ch][4].setIdentity();
         }
     }
 
@@ -477,7 +512,9 @@ private:
     float pkIn[NumStages] {}, pkOut[NumStages] {};
     float kFastAtt = 0.2f, kFastRel = 0.002f, kSlowAtt = 0.005f, kSlowRel = 0.0003f, kCtGain = 0.01f,
           kRms = 0.0002f, kAuto = 0.0005f, kGlide = 0.001f;
-    bool snap = true, fbCleared = false, tailCleared = false;
+    bool snap = true, fbCleared = false, tailCleared = false, snapEq = true;
+    float eqT[5] {}, eqS[5] {};
+    int eqCounter = 0;
     float stageSmooth = 0.99f, stageStep = 0.002f;
 
     Biquad eq[2][5];

@@ -15,7 +15,7 @@ Contents: [Modes](#modes) · [Quick start](#quick-start) · [The window](#the-wi
 [Studio chain](#studio-chain-and-routing) · [Render and record](#render-and-record) · [Presets](#presets) ·
 [Levels](#level-guidance) · [Help and debug](#help-and-debug-tools)
 
-Reference: [Parameters](Parameters.md) · [MIDI map](MidiMap.md) · [Routing](Routing.md) · [Install](Install.md) ·
+Reference: [Sound design recipes](SoundDesign.md) · [Parameters](Parameters.md) · [MIDI map](MidiMap.md) · [Routing](Routing.md) · [Install](Install.md) ·
 [Privacy](Privacy.md)
 
 ## Modes
@@ -65,18 +65,24 @@ excitation it makes sound on a silent track). The same engine runs in all three 
   its top left means a gesture could not finish in time and was merged with the next one.
 - **Order button** — between the two cards: `A → B` or `B → A`, the processing order (Swap Order). Click to swap.
 - **Context panel** — labelled knobs for the selected slot (redundant with the illustration). **Details** opens the
-  source circuit, input stage, trims, stereo, environment (buzz, interference), range policy, order and linking, and
-  diagnostic meters (healthy-reference level, electrical injection, mechanical injection) with the contact state.
+  source circuit, input stage, trims, stereo, chaos, range policy and gesture linking, and diagnostic meters
+  (healthy-reference level, electrical injection, mechanical injection) with the contact state. The drawer scrolls
+  when the window is small. Mains, Buzz and Interference are on the Environment tab; the processing order is the
+  button between the cards.
   When a control asks for more than the circuit or the range policy allows, it shows a short yellow reason above the
-  knob (also in its tooltip). Where a value is clamped, a yellow tick on the arc marks the value actually used.
+  knob (in its tooltip while you adjust it). Where a value is clamped, a yellow tick on the arc marks the value
+  actually used.
   Examples: *Contact stable here* on a healthy seated jack, *Pot is stationary*, *Limited by Natural cap* on
   Excitation Level, *Limited by loop stability* on Feedback. The stored value is never changed.
 - **Bottom tabs** — Gesture Lane, Studio, Create, Routing, Environment. While an internal excitation feeds the circuit, an
   **Excitation on** badge beside the tabs names it and its level (click it to open Create). **Output strip** —
   Dry/Wet, Output, Monitor, Mix law, Dry trim, Ceiling, Bypass, meters.
 
-Keyboard: Tab / Shift+Tab move focus, arrows adjust the focused control, Space plays a focused slot's gesture,
-F1 opens help, Esc closes overlays. Right-click any control for MIDI learn, clear mapping, reset or typing a value.
+Keyboard: Tab / Shift+Tab move focus in a fixed order: header → modes and sources → slot cards → illustrations →
+context panel → bottom tabs and the active panel → output strip. While an overlay is open, focus stays inside it.
+Arrows adjust the focused control, Space plays a focused slot's gesture, F1 opens help, Esc closes overlays.
+Right-click any control for MIDI learn, clear mapping, reset or typing a value. This includes the mode buttons (the
+Mode parameter) and a slot's Play button (Trigger A/B).
 Colour is never the only cue: states are also labelled in text.
 
 ## The four sources
@@ -89,8 +95,9 @@ faults on a healthy still contact), Recovery, Short to Sleeve (interruptions gro
 (bias/charge discharged by transitions), Shield. An open contact removes the through signal.
 
 A fully seated plug on a healthy spot is stable, whatever Intermittency says: the context panel shows *Contact
-stable here*. **Move toward worn area** is in the context panel, and in the *Why quiet?* dialog when this applies.
-It slowly moves the plug (Move Plug) to Wear Position, as one host automation gesture.
+stable here*. **Move toward worn area** is in the context panel (with Details closed), and in the *Why quiet?*
+dialog when this applies. It slowly moves the plug (Move Plug) to Wear Position, as one host automation gesture. It
+stops at once if you or host automation move the plug.
 
 ### Exposed Plug Touch
 A simplified, artistic input-coupling model: a finger on a floating high-impedance tip couples the local mains field
@@ -120,7 +127,7 @@ and Worn Arc Width (drawn on the illustration), Scratch, Circuit Bias (makes scr
 ## Two slots, order and linking
 
 Slots are processed in series: A then B, or B then A with **Swap Order**. The order button between the slot cards
-shows the order and swaps it; the same toggle is also in Details. A downstream open contact
+shows the order and swaps it. A downstream open contact
 interrupts the upstream source's artifacts; a downstream pot filters them. This is a plausible series interaction,
 not an exact model of one combined device.
 
@@ -177,7 +184,8 @@ the slots, so a downstream open contact interrupts it like any other signal.
   Isolator rejects about 70 dB at mains, but rejection falls at higher frequencies, leaving a thin high buzz.
   Balanced + Input Transformer rejects about 100 dB.
 
-The tab shows the measured ground-loop hum after the interface (e.g. *Ground loop: −62 dBFS*).
+The readout at the right of the ground-loop heading shows the measured hum after the interface (e.g. *Ground loop:
+−62 dBFS*). *Cable Run* is a slider.
 
 **2G phone.** A GSM (2G) phone near the gear. The audio circuit detects its radio bursts: the familiar 217 Hz
 "dit-dit" with a regular frame gap. *2G Phone* sets its state:
@@ -215,7 +223,8 @@ the micro-events inside stay physical. Swing, Humanize, Density, Evolve (seeded 
 note 63) shape it.
 
 **Gap** (step menu, Loose Jack and Dirty Pot lanes) fills a step with a real gesture: the jack is pulled open, or
-the pot turned to its minimum, for one step. It is not a hidden gate. For hard rhythmic gating, use the Studio
+the pot turned to its minimum, for one step. The pot Gap needs the Level circuit: with the Tone circuit the minimum
+only darkens the sound. It is not a hidden gate. For hard rhythmic gating, use the Studio
 Rhythm Gate.
 
 Both lanes run on one clock. Lanes of different lengths repeat together after the least common multiple of their
@@ -245,7 +254,8 @@ Studio source: Artifacts (injected hum/pops/handling), Breaks (the fault's chang
 order: EQ → Contour → Drive → Crush → Resonator → Rhythm Gate → Echo, each with on/off and wet. Feedback is a bounded
 local loop from after the Resonator back into Drive (zero by default; Kill Feedback clears it). When the requested
 amount would make the loop unstable it is clamped, and the Feedback knob shows *Limited by loop stability*. Each
-stage has a small meter under its button (upper bar input peak, lower bar output peak). **Raw Hardware** bypasses
+stage has a small meter under its button (upper bar input peak, lower bar output peak). Studio controls that do
+nothing in the current setting are greyed, with the reason in their tooltip. **Raw Hardware** bypasses
 Studio, feedback, excitation (unless Keep Excitation is on) and the hidden extra, so the wet signal is exactly the
 modelled hardware. Monitor chooses what leaves the plug-in; it never changes the model. Latency is always 0 samples.
 See `Routing.md` for the bus diagram.

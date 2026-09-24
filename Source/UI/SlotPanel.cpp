@@ -44,6 +44,9 @@ juce::String explainQuiet (InterferenceProcessor& proc, int slot, const SlotView
             if (rawValue (proc, P::cbMic) <= 0.0f) why.add ("Cable mic is off: a sealed cable makes no handling sound. Raise Mic for rub and tap noise.");
             if (rawValue (proc, P::cbDamage) < 0.05f && rawValue (proc, P::cbShieldDmg) < 0.05f) why.add ("The cable is healthy: raise Damage or Shield Damage for electrical faults.");
             if (v.velocity < 0.01f) why.add ("The cable is still: faults follow movement (Shake, Bend or a gesture).");
+            if (v.quiet & QuietLowImpedance)
+                why.add ("A buffered / line source holds the exposed conductor down: a broken shield picks up about 34 dB less hum. "
+                         "Use Details > Source circuit: Passive Pickup (a high-impedance guitar pickup) for strong pickup.");
             break;
         case SourceType::DirtyPot:
             if (v.quiet & QuietStationary) why.add ("Pot is stationary: a still knob does not scratch. Turn it or automate Turn Knob.");
@@ -65,7 +68,8 @@ SlotCard::SlotCard (InterferenceProcessor& p, int s)
     : proc (p), slot (s),
       enable (p, s == 0 ? P::slotAOn : P::slotBOn, "On"),
       gesture (p, s == 0 ? P::gestureA : P::gestureB),
-      level (p, s == 0 ? P::slotALevel : P::slotBLevel, ParamKnob::Style::SmallKnob, "Disturb")
+      level (p, s == 0 ? P::slotALevel : P::slotBLevel, ParamKnob::Style::SmallKnob, "Disturb"),
+      trigger (p, s == 0 ? P::trigA : P::trigB, "Play")
 {
     sourceBox.addItem ("Empty", 1);
     for (int i = 1; i <= kNumSourceTypes; ++i)
@@ -84,7 +88,9 @@ SlotCard::SlotCard (InterferenceProcessor& p, int s)
     addAndMakeVisible (trigger);
     addAndMakeVisible (why);
     addAndMakeVisible (meter);
-    trigger.setTooltip ("Play this slot's gesture now (hold to sustain gestures that last until release).");
+    trigger.setTooltip (juce::String ("Play this slot's gesture now (hold to sustain gestures that last until release).\n"
+                                      "Right-click: MIDI learn, reset or type a value for ") + paramInfo (s == 0 ? P::trigA : P::trigB).name + ".");
+    trigger.setTitle (juce::String ("Play slot ") + (s == 0 ? "A" : "B"));
     trigger.onStateChange = [this]
     {
         const bool down = trigger.isDown();
@@ -108,18 +114,19 @@ SlotCard::SlotCard (InterferenceProcessor& p, int s)
                            .withAssociatedComponent (this);
         // a stable, healthy jack gets the guided action (realism spec 3)
         const bool guide = proc.slotType (slot) == SourceType::LooseJack && (view.quiet & QuietHealthy) != 0;
+        // scoped: the dialog closes with the card instead of outliving the editor
         if (! guide)
         {
-            juce::AlertWindow::showAsync (options.withButton ("OK"), nullptr);
+            messageBox = juce::AlertWindow::showScopedAsync (options.withButton ("OK"), {});
             return;
         }
         juce::Component::SafePointer<SlotCard> safe (this);
-        juce::AlertWindow::showAsync (options.withButton ("Move toward worn area").withButton ("OK"),
-                                      [safe] (int result)
-                                      {
-                                          if (safe != nullptr && result == 1 && safe->onGuideToWear)
-                                              safe->onGuideToWear (safe->slot);
-                                      });
+        messageBox = juce::AlertWindow::showScopedAsync (options.withButton ("Move toward worn area").withButton ("OK"),
+                                                         [safe] (int result)
+                                                         {
+                                                             if (safe != nullptr && result == 1 && safe->onGuideToWear)
+                                                                 safe->onGuideToWear (safe->slot);
+                                                         });
     };
     setWantsKeyboardFocus (false);
 }
@@ -267,17 +274,23 @@ void SourcePalette::resized()
 ContextPanel::ContextPanel (InterferenceProcessor& p) : proc (p)
 {
     details.setClickingTogglesState (true);
-    details.setTooltip ("Advanced controls: source circuit, input stage, trims, stereo, environment (buzz, interference), range policy, "
-                        "order and linking, plus diagnostic meters and contact state.");
+    details.setTooltip ("Advanced controls: source circuit, input stage, trims, stereo, gesture chaos, range policy and linking, "
+                        "plus diagnostic meters and contact state. The drawer scrolls when the window is small. "
+                        "(Mains, Buzz and Interference are on the Environment tab; the order toggle sits between the slot cards.)");
     details.onClick = [this] { resized(); if (onLayoutChanged) onLayoutChanged(); };
     addAndMakeVisible (details);
     diag.setFont (Theme::monoFont (10.5f));
     diag.setColour (juce::Label::textColourId, Theme::textMuted);
     diag.setJustificationType (juce::Justification::topLeft);
-    addChildComponent (diag);
-    addChildComponent (throughMeter);
-    addChildComponent (elecMeter);
-    addChildComponent (mechMeter);
+    for (auto* c : std::initializer_list<juce::Component*> { &diag, &throughMeter, &elecMeter, &mechMeter })
+        drawerContent.addAndMakeVisible (c);
+    drawer.setViewedComponent (&drawerContent, false); // owned here, not by the viewport
+    drawer.setScrollBarsShown (true, false);
+    drawer.setScrollBarThickness (8);
+    drawer.getVerticalScrollBar().setColour (juce::ScrollBar::thumbColourId, Theme::textMuted.withAlpha (0.45f));
+    drawer.getVerticalScrollBar().setColour (juce::ScrollBar::trackColourId, Theme::edge.withAlpha (0.6f));
+    drawer.setTitle ("Details");
+    addChildComponent (drawer);
     moveToWear.setTooltip ("Guided action: slowly moves the plug (Move Plug) to the worn zone set by Wear Position, "
                            "where movement can make the contact fail. A healthy seated plug is stable by design.");
     moveToWear.onClick = [this] { moveTowardWornArea(); };
@@ -299,6 +312,7 @@ void ContextPanel::moveTowardWornArea()
     guideFrom = rawValue (proc, P::jkInsert);
     guideTo = juce::jlimit (0.0f, 1.0f, rawValue (proc, P::jkWearPos));
     guidePos = 0.0f;
+    guideLast = -1.0f;
     if (! guiding)
     {
         p->beginChangeGesture();
@@ -309,10 +323,19 @@ void ContextPanel::moveTowardWornArea()
 
 void ContextPanel::timerCallback()
 {
+    auto* p = proc.param (P::jkInsert);
+    // the user (knob, illustration) or host automation moved Move Plug: hand over, never fight it
+    if (guideLast >= 0.0f && std::abs (p->getValue() - guideLast) > 1.0e-4f)
+    {
+        stopTimer();
+        endGuide();
+        return;
+    }
     guidePos = std::min (1.0f, guidePos + 1.0f / 18.0f); // ~0.6 s at 30 Hz
     const float s = guidePos * guidePos * (3.0f - 2.0f * guidePos);
-    auto* p = proc.param (P::jkInsert);
-    p->setValueNotifyingHost (p->convertTo0to1 (guideFrom + (guideTo - guideFrom) * s));
+    guideLast = p->convertTo0to1 (guideFrom + (guideTo - guideFrom) * s);
+    p->setValueNotifyingHost (guideLast);
+    guideLast = p->getValue(); // what the parameter actually stores (range snapping)
     if (guidePos >= 1.0f)
     {
         stopTimer();
@@ -322,11 +345,22 @@ void ContextPanel::timerCallback()
 
 void ContextPanel::endGuide()
 {
+    guideLast = -1.0f;
     if (guiding)
     {
         proc.param (P::jkInsert)->endChangeGesture();
         guiding = false;
     }
+}
+
+void ContextPanel::setDetailsOpen (bool open)
+{
+    if (details.getToggleState() == open)
+        return;
+    details.setToggleState (open, juce::dontSendNotification);
+    resized();
+    if (onLayoutChanged)
+        onLayoutChanged();
 }
 
 void ContextPanel::setSlot (int s, SourceType t)
@@ -368,17 +402,15 @@ void ContextPanel::rebuild()
         addAndMakeVisible (primary.add (new ParamChoice (proc, P::ptCircuit, "Circuit")));
     }
     for (int pi : det)
-        addChildComponent (detailControls.add (knob (pi)));
-    // global circuit / calibration controls in the drawer
-    for (int pi : { (int) P::cableLoad, (int) P::inTrim, (int) P::preDrive, (int) P::preHeadroom, (int) P::stereo, (int) P::buzz, (int) P::rf, (int) P::chaos })
-        addChildComponent (detailControls.add (knob (pi)));
-    addChildComponent (detailControls.add (new ParamChoice (proc, P::inputMode, "Source circuit")));
-    addChildComponent (detailControls.add (new ParamChoice (proc, P::mains, "Mains")));
-    addChildComponent (detailControls.add (new ParamChoice (proc, P::policy, "Range policy")));
-    addChildComponent (detailControls.add (new ParamToggle (proc, P::preOn, "Input drive")));
-    addChildComponent (detailControls.add (new ParamToggle (proc, P::linkGesture, "Link gesture")));
-    addChildComponent (detailControls.add (new ParamToggle (proc, P::swapOrder, "Swap order")));
-    moveToWear.setVisible (type == SourceType::LooseJack);
+        drawerContent.addAndMakeVisible (detailControls.add (knob (pi)));
+    // global circuit / calibration controls in the drawer (Mains, Buzz and Interference live on the
+    // Environment tab and Swap Order between the slot cards: not repeated here)
+    for (int pi : { (int) P::cableLoad, (int) P::inTrim, (int) P::preDrive, (int) P::preHeadroom, (int) P::stereo, (int) P::chaos })
+        drawerContent.addAndMakeVisible (detailControls.add (knob (pi)));
+    drawerContent.addAndMakeVisible (detailControls.add (new ParamChoice (proc, P::inputMode, "Source circuit")));
+    drawerContent.addAndMakeVisible (detailControls.add (new ParamChoice (proc, P::policy, "Range policy")));
+    drawerContent.addAndMakeVisible (detailControls.add (new ParamToggle (proc, P::preOn, "Input drive")));
+    drawerContent.addAndMakeVisible (detailControls.add (new ParamToggle (proc, P::linkGesture, "Link gesture")));
     resized();
     repaint();
 }
@@ -413,6 +445,8 @@ void ContextPanel::refresh (const SlotView& v)
         if (pi == P::cbShake && rawValue (proc, P::cbMic) <= 0.0f && rawValue (proc, P::cbDamage) < 0.05f
             && rawValue (proc, P::cbShieldDmg) < 0.05f) lim = "Healthy cable, mic off";
         if (pi == P::cbMic && rawValue (proc, P::cbMic) > 0.0f && (v.quiet & QuietStationary)) lim = "Cable is still";
+        // a buffered / line source holds the broken-shield node down (Source Circuit: Passive Pickup for strong pickup)
+        if (pi == P::cbShieldDmg && type == SourceType::CableHandling && (v.quiet & QuietLowImpedance)) lim = "Line source: ~34 dB less hum";
         k.setLimited (lim);
     };
     for (auto* c : primary)
@@ -461,50 +495,59 @@ void ContextPanel::resized()
         c->setBounds (cell);
         ++i;
     }
-    if (moveToWear.isVisible())
-        moveToWear.setBounds (r.removeFromTop (28).reduced (2).withWidth (std::min (220, r.getWidth() - 4)));
     const bool open = details.getToggleState();
-    for (auto* c : detailControls) c->setVisible (open);
-    throughMeter.setVisible (open);
-    elecMeter.setVisible (open);
-    mechMeter.setVisible (open);
-    diag.setVisible (open);
+    // the guided action belongs to the compact view; the open drawer needs the room
+    moveToWear.setVisible (type == SourceType::LooseJack && ! open);
+    if (moveToWear.isVisible())
+        moveToWear.setBounds (r.removeFromTop (32).reduced (2).withWidth (std::min (220, r.getWidth() - 4)));
+    drawer.setVisible (open);
     if (open)
     {
         r.removeFromTop (6);
-        const int dk = 64;
-        const int dcols = std::max (1, r.getWidth() / 72);
-        const int dw = r.getWidth() / dcols;
-        int j = 0;
-        juce::Rectangle<int> drow;
-        std::vector<juce::Component*> others;
-        for (auto* c : detailControls)
-        {
-            if (dynamic_cast<ParamKnob*> (c) == nullptr) { others.push_back (c); continue; }
-            if (j % dcols == 0) drow = r.removeFromTop (dk);
-            c->setBounds (drow.removeFromLeft (dw).reduced (2));
-            ++j;
-        }
-        auto orow = r.removeFromTop (42);
-        const int ow = orow.getWidth() / 3;
-        int k = 0;
-        for (auto* c : others)
-        {
-            if (k == 3) { orow = r.removeFromTop (30); }
-            const auto cell = orow.removeFromLeft (ow).reduced (2);
-            c->setBounds (dynamic_cast<ParamChoice*> (c) != nullptr ? cell : cell.withSizeKeepingCentre (cell.getWidth(), 26));
-            ++k;
-        }
-        r.removeFromTop (4);
-        auto meters = r.removeFromTop (std::min (60, r.getHeight()));
-        throughMeter.setBounds (meters.removeFromLeft (70).reduced (4, 0));
-        elecMeter.setBounds (meters.removeFromLeft (70).reduced (4, 0));
-        mechMeter.setBounds (meters.removeFromLeft (70).reduced (4, 0));
-        diag.setBounds (meters);
+        drawer.setBounds (r);
+        const int w = std::max (72, r.getWidth() - drawer.getScrollBarThickness() - 2);
+        drawerContent.setSize (w, layoutDrawer (w));
         freeArea = {};
     }
     else
         freeArea = r.withTrimmedTop (8);
+}
+
+int ContextPanel::layoutDrawer (int width)
+{
+    auto r = juce::Rectangle<int> (0, 0, width, 100000);
+    std::vector<juce::Component*> knobs, choices, toggles;
+    for (auto* c : detailControls)
+    {
+        if (dynamic_cast<ParamKnob*> (c) != nullptr)        knobs.push_back (c);
+        else if (dynamic_cast<ParamChoice*> (c) != nullptr) choices.push_back (c);
+        else                                                toggles.push_back (c);
+    }
+    // cells of `perRow` equal columns, `h` tall; toggles keep the 26 px button height
+    auto placeRows = [&r, width] (const std::vector<juce::Component*>& cs, int perRow, int h, bool button)
+    {
+        const int cw = width / std::max (1, perRow);
+        juce::Rectangle<int> row;
+        for (size_t k = 0; k < cs.size(); ++k)
+        {
+            if (k % (size_t) perRow == 0)
+                row = r.removeFromTop (h);
+            const auto cell = row.removeFromLeft (cw).reduced (2);
+            cs[k]->setBounds (button ? cell.withSizeKeepingCentre (cell.getWidth(), 26) : cell);
+        }
+    };
+    placeRows (knobs, std::max (1, width / 72), 64, false);
+    r.removeFromTop (4);
+    placeRows (choices, 2, 42, false);
+    placeRows (toggles, 2, 30, true);
+    r.removeFromTop (6);
+    auto meters = r.removeFromTop (60);
+    throughMeter.setBounds (meters.removeFromLeft (70).reduced (4, 0));
+    elecMeter.setBounds (meters.removeFromLeft (70).reduced (4, 0));
+    mechMeter.setBounds (meters.removeFromLeft (70).reduced (4, 0));
+    r.removeFromTop (4);
+    diag.setBounds (r.removeFromTop (46));
+    return r.getY() + 4;
 }
 
 } // namespace ifx

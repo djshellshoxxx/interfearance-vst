@@ -75,12 +75,34 @@ class ParamToggle : public juce::TextButton
 public:
     ParamToggle (InterferenceProcessor& p, int paramIndex, const juce::String& text = {});
     void mouseDown (const juce::MouseEvent& e) override;
+    void mouseDrag (const juce::MouseEvent& e) override;
+    void mouseUp (const juce::MouseEvent& e) override;
+    int getParamIndex() const noexcept { return index; }
+    /** Grey the toggle out with a short reason (value stays saved), like ParamKnob::setDormant. */
+    void setDormant (bool dormant, const juce::String& reason = {});
+private:
+    InterferenceProcessor& proc;
+    int index;
+    bool menuClick = false;
+    juce::String dormantReason;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> attachment;
+};
+
+/** A plain TextButton (it keeps its own onClick / onStateChange behaviour) whose right-click
+    opens the menu of a related parameter (MIDI learn, reset, type a value) instead of pressing
+    it, e.g. the mode buttons (Mode) and the slot Play buttons (Trigger A / B). */
+class ParamMenuButton : public juce::TextButton
+{
+public:
+    ParamMenuButton (InterferenceProcessor& p, int paramIndex, const juce::String& text = {});
+    void mouseDown (const juce::MouseEvent& e) override;
+    void mouseDrag (const juce::MouseEvent& e) override;
     void mouseUp (const juce::MouseEvent& e) override;
     int getParamIndex() const noexcept { return index; }
 private:
     InterferenceProcessor& proc;
     int index;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> attachment;
+    bool menuClick = false;
 };
 
 /** Momentary button bound to a Bool parameter (true while held), e.g. Fill / Kill. */

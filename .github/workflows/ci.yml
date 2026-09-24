@@ -3,9 +3,13 @@
 #
 # Jobs
 #   checks    (ubuntu, every push / PR): licence notices + Docs/Parameters.md is up to date with Params.h
-#   build     (windows, every push / PR): configure, build Release, run the DSP and GUI test suites,
-#             optional signing, release ZIP + SHA-256 uploaded as artifacts
+#   build     (windows, every push / PR): configure, build Release, run the DSP and GUI test suites, then an
+#             UNSIGNED release ZIP + SHA-256 and the built binaries uploaded as artifacts
+#   release   (windows, v* tags only, protected environment "release"): signs the binaries from `build` with the
+#             release certificate (when configured), writes SIGNATURE.txt via make_release.ps1, uploads the ZIP
 #   slow      (windows, manual "Run workflow" only): the slow suite (CPU benchmark + 1 h offline soak)
+#
+# Runner images are pinned (windows-2022 ships Visual Studio 2022, which the generator below names); bump deliberately.
 
 name: CI
 
@@ -39,10 +43,11 @@ jobs:
           for f in LICENSE THIRD_PARTY.md; do
             [ -f "$f" ] || { echo "::error::$f is missing"; exit 1; }
           done
-          for word in JUCE VST3; do
+          # every statically linked third-party component must be named (JUCE bundles HarfBuzz and SheenBidi)
+          for word in JUCE VST3 HarfBuzz SheenBidi; do
             grep -q "$word" THIRD_PARTY.md || { echo "::error::THIRD_PARTY.md does not mention $word"; exit 1; }
           done
-          echo "LICENSE and THIRD_PARTY.md present; THIRD_PARTY.md lists JUCE and VST3."
+          echo "LICENSE and THIRD_PARTY.md present; THIRD_PARTY.md lists JUCE, VST3, HarfBuzz and SheenBidi."
 
       - name: Docs/Parameters.md matches Source/Core/Params.h
         shell: bash
@@ -55,8 +60,8 @@ jobs:
           }
 
   build:
-    name: Windows x64 build, tests and release ZIP
-    runs-on: windows-latest
+    name: Windows x64 build, tests and unsigned ZIP
+    runs-on: windows-2022
     timeout-minutes: 90
     env:
       # keep presets, options and support files written by the tests out of the runner's Documents folder
@@ -71,16 +76,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: JUCE
-          key: juce-${{ env.JUCE_TAG }}-${{ runner.os }}
+          key: juce-${{ env.JUCE_TAG }}-windows-2022
 
       - name: Fetch JUCE ${{ env.JUCE_TAG }}
         if: steps.juce-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: git clone --depth 1 --branch $env:JUCE_TAG https://github.com/juce-framework/JUCE.git JUCE
 
-      - name: Configure (Visual Studio 2022, x64)
+      # warnings are errors in CI (JUCE recommended warning flags; CMake >= 3.24 is on the runner)
+      - name: Configure (Visual Studio 2022, x64, warnings as errors)
         shell: pwsh
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
 
       - name: Build Release
         shell: pwsh
@@ -108,8 +114,64 @@ jobs:
           path: build/InterferenceGuiTests_artefacts/Release/gui-snapshots/*.png
           if-no-files-found: ignore
 
-      # Signing runs only when a certificate is configured as a repository secret. Without one the build
-      # says so and ships unsigned; it never creates or fakes a signature.
+      # the tested binaries, handed to the tag-only `release` job for signing (never re-built there)
+      - name: Upload built binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-win64
+          path: |
+            build/Interference_artefacts/Release/VST3/
+            build/Interference_artefacts/Release/Standalone/Interference.exe
+          if-no-files-found: error
+
+      # every CI build is unsigned; IFX_SIGNED_BY is left unset, so make_release.ps1 writes an UNSIGNED SIGNATURE.txt
+      - name: Release ZIP + SHA-256 (unsigned)
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File tools\make_release.ps1
+          if ($LASTEXITCODE -ne 0) { throw "make_release.ps1 failed (exit $LASTEXITCODE)" }
+
+      - name: Upload unsigned release ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: interference-win64-unsigned
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  release:
+    name: Signed release ZIP (v* tags only)
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-2022
+    timeout-minutes: 30
+    # protected environment: the signing secrets live here, behind the required reviewers
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      # make_release.ps1 copies the third-party licence texts from the JUCE checkout
+      - name: Cache JUCE ${{ env.JUCE_TAG }}
+        id: juce-cache
+        uses: actions/cache@v4
+        with:
+          path: JUCE
+          key: juce-${{ env.JUCE_TAG }}-windows-2022
+
+      - name: Fetch JUCE ${{ env.JUCE_TAG }}
+        if: steps.juce-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: git clone --depth 1 --branch $env:JUCE_TAG https://github.com/juce-framework/JUCE.git JUCE
+
+      - name: Download the tested binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries-win64
+          path: build/Interference_artefacts/Release
+
+      # Signs with the release certificate from the protected environment. Without it the tag is packaged unsigned
+      # and says so (notice + SIGNATURE.txt); a signature is never created or faked.
       - name: Sign binaries (only with a configured certificate)
         shell: pwsh
         env:
@@ -117,12 +179,13 @@ jobs:
           SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
         run: |
           if (-not $env:SIGNING_CERT_BASE64) {
-            Write-Host "::notice::No SIGNING_CERT_BASE64 secret is configured: the VST3 and the stand-alone app are UNSIGNED."
+            Write-Host "::notice::No SIGNING_CERT_BASE64 secret in the 'release' environment: this tag is packaged UNSIGNED."
             exit 0
           }
           $pfx = Join-Path $env:RUNNER_TEMP "interference-signing.pfx"
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
           try {
+            $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 ($pfx, $env:SIGNING_CERT_PASSWORD)
             $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
                         Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
             if (-not $signtool) { throw "signtool.exe not found" }
@@ -136,6 +199,8 @@ jobs:
               & $signtool.FullName verify /pa $f.FullName
               if ($LASTEXITCODE -ne 0) { throw "signature does not verify: $($f.FullName)" }
             }
+            # only after every file signed and verified: make_release.ps1 writes this into SIGNATURE.txt
+            "IFX_SIGNED_BY=$($cert.Subject)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           } finally {
             Remove-Item -Force -ErrorAction SilentlyContinue $pfx
           }
@@ -146,10 +211,10 @@ jobs:
           powershell -ExecutionPolicy Bypass -File tools\make_release.ps1
           if ($LASTEXITCODE -ne 0) { throw "make_release.ps1 failed (exit $LASTEXITCODE)" }
 
-      - name: Upload release artifacts
+      - name: Upload release ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: interference-win64
+          name: interference-win64-release-${{ github.ref_name }}
           path: |
             dist/*.zip
             dist/*.sha256
@@ -158,7 +223,7 @@ jobs:
   slow:
     name: Slow tests (CPU benchmark + 1 h offline soak)
     if: github.event_name == 'workflow_dispatch' && inputs.slow
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 240
     env:
       IFX_DATA_ROOT: ${{ github.workspace }}\ci-data
@@ -170,7 +235,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: JUCE
-          key: juce-${{ env.JUCE_TAG }}-${{ runner.os }}
+          key: juce-${{ env.JUCE_TAG }}-windows-2022
 
       - name: Fetch JUCE ${{ env.JUCE_TAG }}
         if: steps.juce-cache.outputs.cache-hit != 'true'
@@ -180,7 +245,7 @@ jobs:
       - name: Configure and build the test binary
         shell: pwsh
         run: |
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
           if ($LASTEXITCODE -ne 0) { throw "configure failed" }
           cmake --build build --config Release --parallel --target InterferenceTests
           if ($LASTEXITCODE -ne 0) { throw "build failed" }

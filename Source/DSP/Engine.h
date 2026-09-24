@@ -778,7 +778,7 @@ public:
         if (studioMix > 0.0f)
             studio.takeStagePeaks (t.stageIn, t.stageOut);
         else
-            for (int st = 0; st < 7; ++st) { t.stageIn[st].store (0.0f); t.stageOut[st].store (0.0f); }
+            { /* Studio off: nothing to add; the UI decays its meters */ }
         t.effectiveSeed.store (seedEff);
         for (int li = 0; li < kNumLanes; ++li)
         {

@@ -51,6 +51,10 @@ private:
     void setOverlay (std::unique_ptr<Overlay> o);
     void updateHeader();
     void layoutStream();
+    /** Keyboard / accessibility order: header, mode row, source palette, slot cards, illustrations,
+        context panel, bottom tabs + the visible panel, output strip. */
+    void setFocusOrder();
+    static constexpr int kFocusIllustrations = 50;
     /** Shows an alert tied to this view (scoped: it closes when the editor goes away). */
     void showMessage (const juce::MessageBoxOptions& options);
 
@@ -64,7 +68,7 @@ private:
     juce::Array<juce::File> userPresets;
 
     // mode row
-    juce::TextButton modeButtons[3];
+    ParamMenuButton modeButtons[3]; // right-click: the Mode parameter's menu
     SourcePalette palette;
     juce::Label seedLabel;
     juce::TextButton lockButton { "Lock" }, takeButton { "New Take" };

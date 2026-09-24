@@ -620,3 +620,36 @@ IFX_TEST (Engine, automatedGainsAreSmoothedNotStepped)
     IFX_CHECK_MSG (maxStep < 0.01f, "largest sample step " + juce::String (maxStep));
     IFX_CLOSE (b.getSample (0, b.getNumSamples() - 1), 0.5f * dbToGain (-24.0f), 1.0e-4f);
 }
+
+IFX_TEST (Engine, everyMonitorTapInMonoAndStereoKeepsItsIdentities)
+{
+    // Studio off, Ghost off, 100 % wet, 0 dB trims: y == W == C, P == A (Artifacts source), x == input
+    for (int channels : { 1, 2 })
+    {
+        juce::AudioBuffer<float> taps[7];
+        const auto in = drums (channels, (int) kFs, kFs);
+        for (int tap = 0; tap < 7; ++tap)
+        {
+            Harness h (kFs, channels, 256);
+            h.params = quietParams();
+            h.params[P::hum] = 0.6f;
+            h.params[P::jkInsert] = 0.85f;
+            h.params[P::jkWiggle] = 0.6f;
+            h.params[P::cbShieldDmg] = 0.5f;
+            h.params[P::cbShake] = 0.4f;
+            h.params[P::monitor] = (float) tap;
+            h.setSlots (SourceType::LooseJack, SourceType::CableHandling);
+            taps[tap] = h.run (in);
+            IFX_CHECK (allFinite (taps[tap]));
+            IFX_CHECK (peakOf (taps[tap]) < kSafetyClamp);
+            IFX_CHECK (taps[tap].getNumChannels() == channels);
+        }
+        const juce::String layout = channels == 1 ? "mono" : "stereo";
+        IFX_CHECK_MSG (maxAbsDiff (taps[(int) Tap::Dry], in) == 0.0, layout + ": Dry Input tap is the input");
+        IFX_CHECK_MSG (maxAbsDiff (taps[(int) Tap::FullOutput], taps[(int) Tap::FullWet]) < 1.0e-7, layout + ": 100 % wet output == W");
+        IFX_CHECK_MSG (maxAbsDiff (taps[(int) Tap::FullWet], taps[(int) Tap::FullCore]) == 0.0, layout + ": Studio off: W == C");
+        IFX_CHECK_MSG (maxAbsDiff (taps[(int) Tap::StudioOnly], taps[(int) Tap::Artifacts]) == 0.0, layout + ": Studio off: P == A");
+        IFX_CHECK_MSG (rmsOf (taps[(int) Tap::Artifacts]) > 1.0e-5, layout + ": artifacts present");
+        IFX_CHECK_MSG (rmsOf (taps[(int) Tap::FaultDifference]) > 1.0e-6, layout + ": fault difference present");
+    }
+}

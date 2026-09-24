@@ -29,7 +29,7 @@ namespace
 }
 
 MainView::MainView (InterferenceProcessor& p)
-    : proc (p), palette (p), policy (p, P::policy),
+    : proc (p), modeButtons { { p, P::mode }, { p, P::mode }, { p, P::mode } }, palette (p), policy (p, P::policy),
       cards { { p, 0 }, { p, 1 } }, context (p), orderToggle (p, P::swapOrder, "A > B"),
       lane (p), studio (p), create (p), routing (p), environment (p), output (p)
 {
@@ -78,6 +78,18 @@ MainView::MainView (InterferenceProcessor& p)
     helpButton.onClick = [this] { showHelp(); };
     gearButton.setTooltip ("Options: tooltips, audio / MIDI devices, MIDI mappings, folders.");
     gearButton.onClick = [this] { showOptions(); };
+    // accessible names: what a screen reader announces (icon-only and one-letter buttons need a real one)
+    setTitle ("Interference");
+    menuButton.setTitle ("Menu");
+    prevPreset.setTitle ("Previous preset");
+    nextPreset.setTitle ("Next preset");
+    aButton.setTitle ("Compare: settings A");
+    bButton.setTitle ("Compare: settings B");
+    copyAB.setTitle ("Copy settings to the other compare slot");
+    resetButton.setTitle ("Reset to defaults");
+    randomButton.setTitle ("Randomize");
+    helpButton.setTitle ("Help");
+    gearButton.setTitle ("Options");
     for (auto* c : std::initializer_list<juce::Component*> { &menuButton, &presetBox, &prevPreset, &nextPreset, &aButton, &bButton, &copyAB,
                                                              &resetButton, &randomButton, &helpButton, &gearButton })
         addAndMakeVisible (c);
@@ -88,9 +100,11 @@ MainView::MainView (InterferenceProcessor& p)
         modeButtons[i].setButtonText (modeNames[i]);
         modeButtons[i].setClickingTogglesState (true);
         modeButtons[i].setRadioGroupId (0x30DE);
-        modeButtons[i].setTooltip (i == 0 ? "Hardware: an insert effect with subtle, asynchronous faults."
-                                 : i == 1 ? "Play: MIDI, GUI gestures, automation or the Gesture Lane disturb the hardware in time."
-                                          : "Create: internal excitation reveals faults on a silent track; render one-shots and loops.");
+        modeButtons[i].setTooltip (juce::String (i == 0 ? "Hardware: an insert effect with subtle, asynchronous faults."
+                                               : i == 1 ? "Play: MIDI, GUI gestures, automation or the Gesture Lane disturb the hardware in time."
+                                                        : "Create: internal excitation reveals faults on a silent track; render one-shots and loops.")
+                                   + "\nRight-click: MIDI learn, reset or type a value for Mode.");
+        modeButtons[i].setTitle (juce::String ("Mode: ") + modeNames[i]);
         modeButtons[i].onClick = [this, i]
         {
             auto* prm = proc.param (P::mode);
@@ -106,6 +120,7 @@ MainView::MainView (InterferenceProcessor& p)
     seedLabel.setColour (juce::Label::outlineColourId, Theme::edge);
     seedLabel.setEditable (false, true, false);
     seedLabel.setTooltip ("Seed (hex). Double-click to type one. Fault maps (worn arcs, weak spots) depend on the Seed only.");
+    seedLabel.setTitle ("Seed");
     seedLabel.onTextChange = [this]
     {
         const auto t = seedLabel.getText().trim().retainCharacters ("0123456789abcdefABCDEF");
@@ -129,10 +144,7 @@ MainView::MainView (InterferenceProcessor& p)
         cards[s].onGuideToWear = [this] (int slot) { selectSlot (slot); context.moveTowardWornArea(); };
         addAndMakeVisible (cards[s]);
     }
-    orderToggle.setTooltip ("Processing order of the two slots (Swap Order). A -> B: slot A's output feeds slot B, so a "
-                            "downstream open contact interrupts the upstream source's artifacts. Click to swap; settings stay in their slots.\n"
-                            "Right-click: MIDI learn, reset, type a value.");
-    addAndMakeVisible (orderToggle);
+    addAndMakeVisible (orderToggle); // tooltip (with its MIDI mapping) is kept current by the timer
     addAndMakeVisible (context);
     context.onLayoutChanged = [this] { layoutStream(); };
     rebuildIllustrations();
@@ -161,6 +173,7 @@ MainView::MainView (InterferenceProcessor& p)
     create.onRender = [this] { showRender(); };
     create.onRecord = [this] { toggleRecord(); };
     addAndMakeVisible (stream);
+    setFocusOrder();
 
     refreshPresetBox();
     selectTab ((int) rawValue (proc, P::mode) == 1 ? 0 : (int) rawValue (proc, P::mode) == 2 ? 2 : 1);
@@ -170,6 +183,41 @@ MainView::MainView (InterferenceProcessor& p)
 MainView::~MainView()
 {
     stopTimer();
+}
+
+void MainView::setFocusOrder()
+{
+    // JUCE's traverser sorts siblings by explicit order (1 = first), then top-to-bottom / left-to-right,
+    // and walks each child's own children before the next sibling. Only direct children of this
+    // view need an order; the content of each group keeps its visual order.
+    int order = 1;
+    auto next = [&order] (juce::Component& c) { c.setExplicitFocusOrder (order++); };
+
+    // header
+    for (auto* c : std::initializer_list<juce::Component*> { &menuButton, &prevPreset, &presetBox, &nextPreset, &aButton, &bButton, &copyAB,
+                                                             &resetButton, &randomButton, &helpButton, &gearButton })
+        next (*c);
+    // mode row, then the source palette
+    for (auto& b : modeButtons)
+        next (b);
+    for (auto* c : std::initializer_list<juce::Component*> { &seedLabel, &lockButton, &takeButton, &policy, &palette })
+        next (*c);
+    // slot cards (order toggle between them), then the illustrations (kFocusIllustrations + slot)
+    next (cards[0]);
+    next (orderToggle);
+    next (cards[1]);
+    jassert (order <= kFocusIllustrations);
+    order = kFocusIllustrations + 2;
+    // context panel, bottom tabs and the visible panel, output strip
+    next (context);
+    for (auto& t : tabButtons)
+        next (t);
+    next (excBadge);
+    for (auto* c : std::initializer_list<juce::Component*> { &lane, &studio, &create, &routing, &environment })
+        c->setExplicitFocusOrder (order); // only the visible one is traversed
+    ++order;
+    next (output);
+    next (stream);
 }
 
 //==============================================================================
@@ -200,6 +248,7 @@ void MainView::rebuildIllustrations()
             continue;
         illus[s] = createIllustration (proc, s, t);
         illusType[s] = t;
+        illus[s]->setExplicitFocusOrder (kFocusIllustrations + s);
         addAndMakeVisible (*illus[s]);
     }
     context.setSlot (selectedSlot, proc.slotType (selectedSlot));
@@ -412,6 +461,8 @@ void MainView::setOverlay (std::unique_ptr<Overlay> o)
     if (overlay != nullptr)
     {
         overlay->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe) safe->closeOverlay(); }); };
+        // Tab / Shift+Tab stay inside the open overlay instead of walking the controls behind it
+        overlay->setFocusContainerType (juce::Component::FocusContainerType::keyboardFocusContainer);
         addAndMakeVisible (*overlay);
         overlay->setBounds (getLocalBounds());
         overlay->grabKeyboardFocus();
@@ -484,13 +535,27 @@ void MainView::timerCallback()
     const juce::String orderText (juce::CharPointer_UTF8 (swapped ? "B \xe2\x86\x92 A" : "A \xe2\x86\x92 B"));
     if (orderToggle.getButtonText() != orderText)
         orderToggle.setButtonText (orderText);
+    {
+        // like every other parameter control, the tooltip shows the current MIDI mapping
+        const auto m = proc.describeMidiMapping (P::swapOrder);
+        juce::String tip ("Processing order of the two slots (Swap Order). A -> B: slot A's output feeds slot B, so a "
+                          "downstream open contact interrupts the upstream source's artifacts. Click to swap; settings stay in their slots.");
+        if (m.isNotEmpty())
+            tip << "\nMIDI: " << m;
+        tip << "\nRight-click: MIDI learn, reset, type a value.";
+        if (orderToggle.getTooltip() != tip)
+            orderToggle.setTooltip (tip);
+    }
 
-    // realism spec 8: make it obvious when the internal excitation is part of the sound
-    const bool excOn = t.excitationActive.load();
+    // realism spec 8: make it obvious when the internal excitation is part of the sound. Short
+    // names keep the badge readable in its 190-230 px; no badge while the type is Off (fade-out)
+    const int excType = juce::jlimit (0, 4, (int) rawValue (proc, P::excType));
+    const bool excOn = t.excitationActive.load() && excType > 0;
     if (excOn)
     {
-        const auto excName = juce::StringArray::fromTokens (paramInfo (P::excType).choices, "|", "")[(int) rawValue (proc, P::excType)];
-        juce::String badge = "Excitation on: " + excName + " " + juce::String (t.excitationEffectiveDb.load(), 0) + " dB";
+        static const char* shortNames[] = { "", "Noise", "Buzz", "Bias", "Tone" };
+        juce::String badge = juce::String ("Excitation on: ") + shortNames[excType] + " "
+                           + juce::String (t.excitationEffectiveDb.load(), 0) + " dB";
         if (t.excitationLimited.load())
             badge << " (capped)";
         if (excBadge.getButtonText() != badge)
@@ -537,7 +602,7 @@ void MainView::paint (juce::Graphics& g)
     // processing order: caption above the toggle between the slot cards
     if (! orderArea.isEmpty())
         Theme::drawLabel (g, "order", orderArea.withHeight (orderArea.getHeight() / 2 - 14).removeFromBottom (14),
-                          juce::Justification::centred, Theme::textMuted, 9.0f);
+                          juce::Justification::centred, Theme::textMuted, 10.0f);
 
     // section separators (1 px lines, never boxes in boxes)
     g.setColour (Theme::edge);

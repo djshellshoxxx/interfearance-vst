@@ -37,14 +37,16 @@ Documents folder (CI does this).
 
 | Job | Runner | When | What |
 |---|---|---|---|
-| `checks` | ubuntu-latest | every push and pull request | `LICENSE` and `THIRD_PARTY.md` exist, and `THIRD_PARTY.md` names JUCE and VST3. `python tools/gen_param_doc.py` must leave `Docs/Parameters.md` unchanged (line endings ignored). |
-| `build` | windows-latest | every push and pull request | Shallow clone of JUCE 8.0.8 into `./JUCE` (cached). Configure with Visual Studio 2022 x64, build Release. Run `InterferenceTests.exe` and `InterferenceGuiTests.exe`; a non-zero exit fails the job. Upload the GUI snapshots. Optional signing. `tools/make_release.ps1` (without `-Build`), then upload `dist/*.zip` and `dist/*.sha256`. |
-| `slow` | windows-latest | manual *Run workflow* only (input `slow`) | Builds the DSP test binary and runs `InterferenceTests.exe --slow`: the CPU benchmark and the 1 h offline soak. |
+| `checks` | ubuntu-latest | every push and pull request | `LICENSE` and `THIRD_PARTY.md` exist, and `THIRD_PARTY.md` names JUCE, VST3, HarfBuzz and SheenBidi. `python tools/gen_param_doc.py` must leave `Docs/Parameters.md` unchanged (line endings ignored). |
+| `build` | windows-2022 (pinned: ships VS 2022) | every push and pull request | Shallow clone of JUCE 8.0.8 into `./JUCE` (cached). Configure with Visual Studio 2022 x64 with warnings as errors (`-DCMAKE_COMPILE_WARNING_AS_ERROR=ON`), build Release. Run `InterferenceTests.exe` and `InterferenceGuiTests.exe`; a non-zero exit fails the job. Upload the GUI snapshots and the built binaries. `tools/make_release.ps1` (without `-Build`) makes an **unsigned** ZIP (its `SIGNATURE.txt` says UNSIGNED), uploaded as `interference-win64-unsigned` with its `.sha256`. |
+| `release` | windows-2022 | `v*` tags only, protected environment `release` | Takes the tested binaries from `build` (no rebuild), signs and verifies them when the environment holds a certificate, sets `IFX_SIGNED_BY` to the certificate subject for `SIGNATURE.txt`, runs `make_release.ps1` and uploads `interference-win64-release-<tag>`. |
+| `slow` | windows-2022 | manual *Run workflow* only (input `slow`) | Builds the DSP test binary and runs `InterferenceTests.exe --slow`: the CPU benchmark and the 1 h offline soak. |
 
-Signing runs only when the repository secret `SIGNING_CERT_BASE64` (a base64 PFX, with optional
-`SIGNING_CERT_PASSWORD`) is set. It signs the VST3 binary and the stand-alone app with `signtool` and an RFC 3161
-timestamp, then verifies both, before the ZIP is made. Without the secret the job prints a notice that the artefacts
-are **unsigned**. It never creates or fakes a signature.
+Signing happens only in the `release` job, only for `v*` tags, and only when the `release` environment (protected by
+required reviewers) holds the secret `SIGNING_CERT_BASE64` (a base64 PFX, with optional `SIGNING_CERT_PASSWORD`).
+It signs the VST3 binary and the stand-alone app with `signtool` and an RFC 3161 timestamp, then verifies both, before
+the ZIP is made. Without the secret the tag is packaged unsigned with a notice, and `SIGNATURE.txt` says UNSIGNED.
+Branch builds and pull requests are never signed. A signature is never created or faked.
 
 CI does not run pluginval or load the plug-in in a DAW: those remain local release gates (see below).
 
@@ -112,3 +114,6 @@ These could not be exercised unattended on this machine and are **not** claimed:
    licence agreement (see `THIRD_PARTY.md`), code signing certificate.
 6. **Sanitizer build** (`-DINTERFERENCE_ASAN=ON`) was not run in this session (4 GB RAM machine).
 7. **macOS / AU / Linux / CLAP**: not built.
+8. **Low disk space** while rendering or recording: the write-failure paths exist (bad path and cancel are tested;
+   a full disk reports the writer error and drops samples during Record, counted in the popup) but a full disk was not
+   simulated.
