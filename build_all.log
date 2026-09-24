@@ -1,0 +1,28 @@
+MSBuild version 17.14.51+25f168cee for .NET Framework
+
+  Checking File Globs
+  Interference_rc_lib.vcxproj -> C:\Users\new\Desktop\interfearance vst\build\Interference_rc_lib.dir\Release\Interference_rc_lib.lib
+  InterferenceGuiTests_rc_lib.vcxproj -> C:\Users\new\Desktop\interfearance vst\build\InterferenceGuiTests_rc_lib.dir\Release\InterferenceGuiTests_rc_lib.lib
+  InterferenceTests_rc_lib.vcxproj -> C:\Users\new\Desktop\interfearance vst\build\InterferenceTests_rc_lib.dir\Release\InterferenceTests_rc_lib.lib
+  juce_vst3_helper.vcxproj -> C:\Users\new\Desktop\interfearance vst\build\Release\juce_vst3_helper.exe
+  PluginProcessor.cpp
+  Illustrations.cpp
+  StudioPanel.cpp
+  Theme.cpp
+  Widgets.cpp
+  Interference.vcxproj -> C:\Users\new\Desktop\interfearance vst\build\Interference_artefacts\Release\Interference_SharedCode.lib
+     Creating library C:/Users/new/Desktop/interfearance vst/build/Interference_artefacts/Release/VST3/Interference.lib and object C:/Users/new/Desktop/interfearance vst/build/Interference_artefacts/Release/VST3/Interference.exp
+  Generating code
+  Finished generating code
+  Interference_VST3.vcxproj -> C:\Users\new\Desktop\interfearance vst\build\Interference_artefacts\Release\VST3\Interference.vst3\Contents\x86_64-win\Interference.vst3
+  removing moduleinfo.json
+  creating C:/Users/new/Desktop/interfearance vst/build/Interference_artefacts/Release/VST3/Interference.vst3/Contents/Resources/moduleinfo.json
+  InterferenceTests.vcxproj -> C:\Users\new\Desktop\interfearance vst\build\InterferenceTests_artefacts\Release\InterferenceTests.exe
+  Generating code
+  Finished generating code
+  Interference_Standalone.vcxproj -> C:\Users\new\Desktop\interfearance vst\build\Interference_artefacts\Release\Standalone\Interference.exe
+  PluginProcessor.cpp
+  Illustrations.cpp
+  Theme.cpp
+  Widgets.cpp
+  InterferenceGuiTests.vcxproj -> C:\Users\new\Desktop\interfearance vst\build\InterferenceGuiTests_artefacts\Release\InterferenceGuiTests.exe
