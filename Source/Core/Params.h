@@ -163,7 +163,18 @@ X(ceiling,     "ceiling",     "Ceiling Level",     F, -24, 0, -0.3f, 0, "dB", ""
 X(ghostOn,     "ghost_on",    "Ghost Carrier",     B, 0, 1, 0, 0, "", "", "Secret hidden effect: a stray radio carrier ring-modulates the wet path. Off by default.") \
 X(ghostFreq,   "ghost_freq",  "Ghost Frequency",   F, 20, 2000, 110, 1, "Hz", "", "Secret hidden effect: carrier frequency of the Ghost Carrier.") \
 X(ghostDrift,  "ghost_drift", "Ghost Drift",       F, 0, 1, 0.25f, 0, "%", "", "Secret hidden effect: slow, repeatable wander of the carrier (an unstable transmitter).") \
-X(ghostMix,    "ghost_mix",   "Ghost Amount",      F, 0, 1, 0.5f, 0, "%", "", "Secret hidden effect: how much of the wet path is ring-modulated.")
+X(ghostMix,    "ghost_mix",   "Ghost Amount",      F, 0, 1, 0.5f, 0, "%", "", "Secret hidden effect: how much of the wet path is ring-modulated.") \
+/* --- ground loop and interference environment (appended in 1.0.0) --- */ \
+X(glGear,      "gl_gear",     "Other Gear",        C, 0, 4, 0, 0, "", "Off|2-Prong Low Power|2-Prong Mid Power|2-Prong High Power|Grounded", "Other equipment connected to the rig. Its leakage current (2-prong) or ground-voltage difference (grounded) flows through the cable shield and becomes ground-loop hum. Off = no ground loop.") \
+X(glOutlets,   "gl_outlets",  "Outlets",           C, 0, 3, 1, 0, "", "Same Strip|Same Room|Across Building|Cable-TV Line", "How far apart the grounds of grounded gear are: more distance, more ground-voltage difference, louder hum.") \
+X(glRun,       "gl_run",      "Cable Run",         F, 0.3f, 30, 3, 1, "m", "", "Length of the unbalanced cable between the gear. Longer shields have more resistance, so the same current makes more hum.") \
+X(glShield,    "gl_shield",   "Cable Shield",      C, 0, 2, 1, 0, "", "Foil + Drain|Braid|Heavy Braid", "Shield construction: a thin drain wire has far more resistance than a heavy braid.") \
+X(glIface,     "gl_iface",    "Interface",         C, 0, 3, 0, 0, "", "Unbalanced|Balanced|Balanced + Isolator|Balanced + Input Transformer", "How the receiving input rejects the ground noise. Balanced helps some; isolators remove the hum but leave a thin high buzz.") \
+X(buzzType,    "buzz_type",   "Buzz Source",       C, 0, 1, 0, 0, "", "Supply|Dimmer", "What makes the Buzz Band: a rectifier supply (2x mains pulses) or a light dimmer (sharp firing spikes, loudest at half brightness).") \
+X(dimBright,   "dim_bright",  "Dimmer",            F, 0, 1, 0.5f, 0, "%", "", "Light dimmer brightness. The buzz is loudest near half brightness and disappears at fully on or off. Stays locked to the mains.") \
+X(dimKind,     "dim_kind",    "Dimmer Kind",       C, 0, 2, 0, 0, "", "Cheap Wall|Stage|TV Studio", "Switching rise time: cheap wall dimmers switch in microseconds (harsh); stage and studio dimmers use chokes (softer, darker).") \
+X(gsm,         "gsm",         "2G Phone",          C, 0, 3, 0, 0, "", "Away|Check-in|Incoming|In Call", "A 2G (GSM) phone near the rig: its 217 Hz TDMA bursts are detected by the audio circuit. The rhythm is physical; the state decides when bursts happen.") \
+X(gsmDist,     "gsm_dist",    "Phone Distance",    F, 0.1f, 2, 0.5f, 1, "m", "", "Distance of the phone from the gear. Detected interference falls steeply with distance.")
 
 enum P : int
 {

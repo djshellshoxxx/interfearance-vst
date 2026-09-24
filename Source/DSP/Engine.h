@@ -232,6 +232,28 @@ public:
         env.setMainsFrequency (prm.choice (P::mains) == 1 ? 60.0f : 50.0f);
         env.setBuzz (prm[P::buzz]);
         env.setRf (prm[P::rf]);
+        env.setBuzzType ((Environment::BuzzType) std::clamp (prm.choice (P::buzzType), 0, 1));
+        env.setDimmer (prm[P::dimBright], prm.choice (P::dimKind));
+        env.setPhone ((Environment::Phone) std::clamp (prm.choice (P::gsm), 0, 3));
+
+        // ground loop (Docs/research/ElectricalInterference.md 5.3 / 5.4): shield current x loop
+        // resistance, in series with the signal, then the receiving interface's common-mode rejection
+        static const double rShieldPerM[3] = { 0.135, 0.02, 0.0036 };   // ohm/m: drain, braid, heavy braid
+        static const double glLeak[4] = { 0.0, 5.0e-6, 1.0e-4, 1.0e-3 }; // A: 2-prong leakage low / mid / high
+        static const double glVdiff[4] = { 0.001, 0.01, 0.1, 1.0 };      // V: ground difference by outlets
+        static const float ifaceG0[4] = { 1.0f, 0.0316f, 3.16e-4f, 1.0e-5f }; // CMRR at mains: 0 / 30 / 70 / 100 dB
+        static const double ifaceFk[4] = { 1.0, 3000.0, 53.0, 67.0 };    // rejection falls 6 dB/oct above f_k
+        const int glGear = std::clamp (prm.choice (P::glGear), 0, 4);
+        const int glIface = std::clamp (prm.choice (P::glIface), 0, 3);
+        const double glRloop = std::clamp ((double) prm[P::glRun], 0.3, 30.0) * rShieldPerM[std::clamp (prm.choice (P::glShield), 0, 2)]
+                             + 2.0 * 0.05;                                // two connector contacts, 50 mohm each
+        const double glVd = glVdiff[std::clamp (prm.choice (P::glOutlets), 0, 3)];
+        const float glCap = limit (limits::backgroundCeiling, policy);
+        const float glG0 = ifaceG0[glIface];
+        const float glDiffK = glIface == 0 ? 0.0f : (float) (fs / (2.0 * kPi * ifaceFk[glIface]));
+        const float gsmLevel = prm.choice (P::gsm) == 0 ? 0.0f
+            : std::min (1.0f, (float) std::pow (0.15 / std::max (0.1, (double) prm[P::gsmDist]), 2.0)) * limit (limits::backgroundCeiling, policy);
+        float glPeak = 0.0f;
 
         SampleCtx ctx;
         ctx.hum = prm[P::hum];
@@ -503,6 +525,33 @@ public:
             for (int ch = 0; ch < 2; ++ch)
                 paths[0][ch] = paths[1][ch] = paths[2][ch] = p[ch];
 
+            // ---- ground loop + 2G phone: injected into the complete path only (part of bus A) ----
+            float envInj = 0.0f;
+            if (glGear > 0)
+            {
+                // a worn / partly open sleeve (Loose Jack) or shield (Cable Handling) adds resistance, so
+                // the hum breathes with movement; a fully open ground breaks the loop
+                double open = 0.0;
+                for (int s = 0; s < 2; ++s)
+                    if (src[s] != nullptr && slotOn[s] && (slotType[s] == SourceType::LooseJack || slotType[s] == SourceType::CableHandling))
+                        open = std::max (open, (double) std::clamp (src[s]->tele.auxOpenness, 0.0f, 1.0f));
+                const double r = glRloop + 1.0 * open;
+                const double v = (glGear < 4 ? glLeak[glGear] * r : glVd * r / (r + 0.5)) * (1.0 - open);
+                const float glLvl = std::min ((float) (v / 0.3 * 0.126), glCap); // 300 mV nominal = -18 dBFS
+                const float cm = glLvl * (glGear < 4 ? ctx.env.humBright : ctx.env.humClean); // leakage buzz vs IR hum
+                const float res = glG0 * (cm + (cm - glPrev) * glDiffK);
+                glPrev = cm;
+                glPeak = std::max (glPeak, std::abs (res));
+                envInj += res;
+            }
+            else
+                glPrev = 0.0f;
+            if (gsmLevel > 0.0f)
+                envInj += gsmLevel * ctx.env.gsm;
+            if (envInj != 0.0f)
+                for (int ch = 0; ch < nch; ++ch)
+                    paths[2][ch] += envInj;
+
             const int order[2] = { effSwap ? 1 : 0, effSwap ? 0 : 1 };
             for (int oi = 0; oi < 2; ++oi)
             {
@@ -711,6 +760,7 @@ public:
         t.sidechainPresent.store (sidechain != nullptr && sidechainChannels > 0);
         t.sidechainEnv.store (scEnv);
         t.excitationActive.store (excGain > 1.0e-6f);
+        t.groundLoopDb.store (glGear > 0 ? gainToDb (glPeak) : -120.0f);
         t.tailSeconds.store (studioOn ? (float) studio.tailSeconds() : 0.0f); // Studio off / Raw Hardware: no tail
         if (studioMix > 0.0f)
             studio.takeStagePeaks (t.stageIn, t.stageOut);
@@ -1067,6 +1117,7 @@ private:
     float trim = 1.0f, excGain = 0.0f, studioMix = 0.0f, rawMix = 0.0f, bypassMix = 0.0f, ceilGain = 1.0f;
     float slotMix[2] { 1.0f, 1.0f };
     float ghostRamp = 0.0f;
+    float glPrev = 0.0f;
     // smoothed block targets and switch crossfades
     bool snapGains = true;
     float dryS = 0.0f, wetS = 1.0f, outS = 1.0f, studioLvlS = 1.0f, ceilS = 1.0f, preDriveS = 1.0f, preClipS = 1.0f,
