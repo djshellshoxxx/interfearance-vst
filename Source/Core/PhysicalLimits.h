@@ -3,7 +3,9 @@
 // Centralised engineering caps (realism spec section 2, "Calibrating numeric limits").
 // Every number here is a LISTENING-TEST STARTING POINT, not a measurement. Each has a
 // Natural and an Expressive column; the causal invariants are enforced in code and can
-// not be switched off by any column. Each bound is exercised by Tests/TestLimits.cpp.
+// not be switched off by any column. Every bound has a test: Tests/TestLimits.cpp, plus the
+// contact / motion / retrigger caps in Tests/TestCore.cpp and the source-level caps in
+// Tests/TestSources.cpp and Tests/TestEngine.cpp.
 namespace ifx
 {
 

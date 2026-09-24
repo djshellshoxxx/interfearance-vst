@@ -20,7 +20,7 @@ struct SlotView
 /** Base for the functional illustrations. They draw the actual causal mechanism from the
     engine's measured state and act as controls: drags write parameters with host gesture
     begin/end, quick motions send gestures through the processor's lock-free queue. */
-class Illustration : public juce::Component
+class Illustration : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     Illustration (InterferenceProcessor& p, int slotIndex, SourceType t);
@@ -33,13 +33,25 @@ public:
     bool keyPressed (const juce::KeyPress& k) override;
     void focusGained (FocusChangeType) override { repaint(); }
     void focusLost (FocusChangeType) override { repaint(); }
+    /** Right-click anywhere: the primary parameter's menu (MIDI learn, reset, type a value). */
+    void mouseDown (const juce::MouseEvent& e) override { handlePopup (e); }
+    void mouseUp (const juce::MouseEvent&) override { finishPopup(); }
 
     /** Parameter the keyboard / accessible adjustment acts on. */
     virtual int primaryParam() const = 0;
     virtual juce::String stateText() const = 0;
+    /** The primary parameter of a source type (same as primaryParam(), usable in constructors). */
+    static int primaryParamFor (SourceType t, int slotIndex) noexcept;
 
 protected:
     virtual void draw (juce::Graphics& g, juce::Rectangle<float> area) = 0;
+
+    /** Opens the parameter menu on a right-click and returns true; the following drag and
+        mouse-up of that click must then be ignored (see finishPopup). */
+    bool handlePopup (const juce::MouseEvent& e);
+    /** Call on mouse-up: returns true (and resets) if the click was a right-click menu. */
+    bool finishPopup() noexcept;
+    bool popupActive = false;
 
     float value (int param) const;
     void beginEdit (int param);

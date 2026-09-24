@@ -69,7 +69,17 @@ namespace StateIO
     bool savePresetFile (const PluginState& s, const juce::File& file, juce::String& error);
     bool loadPresetFile (const juce::File& file, PluginState& s, juce::String& error, juce::StringArray* warnings = nullptr);
 
-    /** Default user preset folder: Documents/Interference/Presets. */
+    /** Root of the user data folders: Documents/Interference by default. A test build or a
+        portable setup can redirect it (presets, support files and the options file) with
+        setDataRootOverride() or the environment variable IFX_DATA_ROOT (an absolute path);
+        the programmatic override wins. */
+    juce::File userDataFolder();
+    /** The redirected root, or juce::File() when neither override is set. */
+    juce::File dataRootOverride();
+    /** Message thread / test setup only. Pass juce::File() to clear. */
+    void setDataRootOverride (const juce::File& root);
+
+    /** Default user preset folder: <userDataFolder()>/Presets (Documents/Interference/Presets). */
     juce::File userPresetFolder();
     constexpr const char* kPresetExtension = ".ifxpreset";
 

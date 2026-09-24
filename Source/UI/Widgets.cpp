@@ -106,7 +106,10 @@ ParamKnob::ParamKnob (InterferenceProcessor& p, int paramIndex, Style s, const j
     if (style == Style::Horizontal)
         slider.setSliderStyle (juce::Slider::LinearHorizontal);
     else
+    {
         slider.setSliderStyle (juce::Slider::RotaryVerticalDrag);
+        slider.setMouseCursor (juce::MouseCursor::UpDownResizeCursor); // theme.md: vertical-resize cursor on knobs
+    }
     slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f, juce::MathConstants<float>::pi * 2.75f, true);
     slider.setScrollWheelEnabled (true);
@@ -129,7 +132,18 @@ ParamKnob::~ParamKnob() { stopTimer(); }
 void ParamKnob::timerCallback()
 {
     // refresh tooltip (MIDI mapping may change) and hover readout
-    const auto t = dormantReason.isNotEmpty() ? paramTooltip (proc, index) + "\n(" + dormantReason + ")" : paramTooltip (proc, index);
+    auto t = paramTooltip (proc, index);
+    if (dormantReason.isNotEmpty())
+        t << "\n(" << dormantReason << ")";
+    if (limitedReason.isNotEmpty())
+    {
+        t << "\nLimited: " << limitedReason;
+        if (! std::isnan (effectiveValue))
+        {
+            auto* p = proc.param (index);
+            t << " (effective " << p->getText (p->convertTo0to1 (effectiveValue), 32) << ")";
+        }
+    }
     if (slider.getTooltip() != t)
         slider.setTooltip (t);
     const bool hov = slider.isMouseOverOrDragging() || slider.hasKeyboardFocus (false);
@@ -155,6 +169,18 @@ void ParamKnob::setLimited (const juce::String& why)
     if (why != limitedReason)
     {
         limitedReason = why;
+        timerCallback(); // tooltip at once
+        repaint();
+    }
+}
+
+void ParamKnob::setEffective (float realValue)
+{
+    const bool same = std::isnan (realValue) ? std::isnan (effectiveValue)
+                                             : (! std::isnan (effectiveValue) && std::abs (realValue - effectiveValue) < 1.0e-4f);
+    if (! same)
+    {
+        effectiveValue = realValue;
         repaint();
     }
 }
@@ -191,12 +217,19 @@ void ParamKnob::paint (juce::Graphics& g)
     }
     else
     {
-        // value readout above (hover / drag), label below
+        // value readout above (hover / drag), label below; while the control is not touched a
+        // "Limited by" reason uses the readout row
         if (active)
         {
             g.setFont (Theme::valueFont (12.0f));
             g.setColour (Theme::text);
             g.drawFittedText (valueText, r.removeFromTop (14), juce::Justification::centred, 1);
+        }
+        else if (limitedReason.isNotEmpty())
+        {
+            g.setFont (Theme::bodyFont (9.5f));
+            g.setColour (Theme::warning);
+            g.drawFittedText (limitedReason, r.removeFromTop (14).reduced (8, 0), juce::Justification::centred, 1, 0.6f);
         }
         else
             r.removeFromTop (14);
@@ -213,6 +246,22 @@ void ParamKnob::paint (juce::Graphics& g)
         g.setColour (Theme::accent2);
         g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (1.0f), 4.0f, 1.5f);
     }
+}
+
+void ParamKnob::paintOverChildren (juce::Graphics& g)
+{
+    // effective (clamped) value: a short warning-coloured tick across the value arc
+    if (style == Style::Horizontal || std::isnan (effectiveValue))
+        return;
+    const auto rp = slider.getRotaryParameters();
+    const auto b = slider.getBounds().toFloat();
+    const float size = std::min (b.getWidth(), b.getHeight());
+    const auto c = b.getCentre();
+    const float prop = juce::jlimit (0.0f, 1.0f, (float) slider.valueToProportionOfLength ((double) effectiveValue));
+    const float ang = rp.startAngleRadians + prop * (rp.endAngleRadians - rp.startAngleRadians);
+    const float r0 = size * 0.5f - 7.0f, r1 = size * 0.5f + 1.0f;
+    g.setColour (Theme::warning);
+    g.drawLine (c.x + std::sin (ang) * r0, c.y - std::cos (ang) * r0, c.x + std::sin (ang) * r1, c.y - std::cos (ang) * r1, 2.0f);
 }
 
 //==============================================================================
@@ -318,7 +367,19 @@ void ParamChoice::resized()
 void ParamChoice::paint (juce::Graphics& g)
 {
     if (caption.isNotEmpty())
-        Theme::drawLabel (g, caption, getLocalBounds().removeFromTop (14), juce::Justification::centredLeft, Theme::textMuted, 10.0f);
+        Theme::drawLabel (g, caption, getLocalBounds().removeFromTop (14), juce::Justification::centredLeft,
+                          box.isEnabled() ? Theme::textMuted : Theme::edge, 10.0f);
+}
+
+void ParamChoice::setDormant (bool dormant, const juce::String& reason)
+{
+    const auto r = dormant ? reason : juce::String();
+    if (box.isEnabled() == ! dormant && dormantReason == r)
+        return;
+    dormantReason = r;
+    box.setEnabled (! dormant);
+    box.setTooltip (r.isNotEmpty() ? paramTooltip (proc, index) + "\n(" + r + ")" : paramTooltip (proc, index));
+    repaint();
 }
 
 void ParamChoice::mouseDown (const juce::MouseEvent& e)

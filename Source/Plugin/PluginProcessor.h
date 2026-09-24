@@ -130,6 +130,7 @@ private:
     void pushNonParamToEngine();
     void rebuildCcTable();
     void noteActivity (const juce::String& s);
+    juce::int64 pendingActivity (juce::int64 cursor) const; // history lines after `cursor`
 
     Engine engine;
     std::atomic<float>* raw[kNumParams] {};

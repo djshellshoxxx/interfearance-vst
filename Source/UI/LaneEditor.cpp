@@ -223,6 +223,12 @@ void StepGrid::showStepMenu (int lane, int step)
         sm.addItem (90 + k, juce::String (k * 50) + " %", true, std::abs (st.send * 2.0f - k * 0.5f) < 0.01f);
     m.addSubMenu ("Studio send", sm);
     m.addItem (3, "Choke Studio tail on this step", true, st.choke != 0);
+    // industrial spec 3: a Gap is a valid physical gesture (jack pulled open, pot turned to its
+    // minimum), never a hidden gate; other sources have no such gesture
+    const auto laneSource = proc.slotType (lane);
+    const bool gapPossible = laneSource == SourceType::LooseJack || laneSource == SourceType::DirtyPot;
+    m.addItem (7, laneSource == SourceType::DirtyPot ? "Gap: turn the pot to minimum for the step"
+                                                     : "Gap: pull the jack open for the step", gapPossible);
     m.addSeparator();
     m.addItem (4, "Copy step");
     m.addItem (5, "Paste step", haveClipboard);
@@ -242,10 +248,20 @@ void StepGrid::showStepMenu (int lane, int step)
         };
         if (r == 4) { self.clipboard = self.pattern.lanes[lane].steps[step]; self.haveClipboard = true; return; }
         const float wt = wearTarget();
-        self.edit ([&self, r, lane, step, wt] (Pattern& p)
+        const bool potLane = self.proc.slotType (lane) == SourceType::DirtyPot;
+        self.edit ([&self, r, lane, step, wt, potLane] (Pattern& p)
         {
             auto& s = p.lanes[lane].steps[step];
-            if (r == 1) s.active ^= 1;
+            if (r == 7)
+            {
+                // Jack pattern gesture 2 = Pull, Pot pattern gesture 0 = Turn to Angle; target 0 % travel
+                s.active = 1;
+                s.gesture = (uint8_t) (potLane ? 0 : 2);
+                s.target = 0.0f;
+                s.duration = 1.0f;
+                s.ratchet = 1;
+            }
+            else if (r == 1) s.active ^= 1;
             else if (r == 2) s.accent ^= 1;
             else if (r == 3) s.choke ^= 1;
             else if (r == 5) s = self.clipboard;
@@ -386,8 +402,17 @@ void LaneEditor::refresh()
         c = t.clockRunning.load() ? "Internal clock " + juce::String (t.bpm.load(), 1) + " BPM (no host transport)" : "No host transport: internal clock stopped";
     c << "   A: " << pat.lanes[0].length << "   B: " << pat.lanes[1].length;
     const int la = pat.lanes[0].length, lb = pat.lanes[1].length;
-    const int cycle = la / std::gcd (la, lb) * lb;
-    c << "   cycle " << cycle << " steps";
+    const int cycle = la / std::gcd (la, lb) * lb; // at most 64 x 63 = 4032 steps
+    // loop-phase indicator: position inside the combined A/B cycle while the lane runs
+    const bool running = t.clockRunning.load() && (t.laneStep[0].load() >= 0 || t.laneStep[1].load() >= 0);
+    if (running)
+    {
+        const double stepBeats = divisionBeats ((int) proc.apvts.getRawParameterValue ("lane_div")->load());
+        const auto globalStep = (juce::int64) std::floor (t.ppq.load() / stepBeats);
+        c << "   cycle " << (int) (((globalStep % cycle) + cycle) % cycle) + 1 << " / " << cycle;
+    }
+    else
+        c << "   cycle " << cycle << " steps";
     if (c != clockText)
     {
         clockText = c;

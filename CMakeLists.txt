@@ -118,6 +118,7 @@ if(IFX_HAVE_PLUGIN)
         Source/Plugin/PluginProcessor.cpp
         Source/Plugin/PluginEditor.cpp
         Source/Plugin/Diagnostics.cpp
+        Source/Plugin/CrashHookWin.cpp
     )
     target_include_directories(Interference PRIVATE Source)
     target_link_libraries(Interference PRIVATE ${IFX_MODULES}
@@ -141,6 +142,9 @@ set(IFX_TEST_SOURCES
     Tests/TestState.cpp
     Tests/TestRender.cpp
     Tests/TestPerf.cpp
+    Tests/TestEnvironment.cpp
+    Tests/TestLimits.cpp
+    Tests/TestScenarios.cpp
     ${IFX_SHARED_SOURCES}
 )
 target_sources(InterferenceTests PRIVATE ${IFX_TEST_SOURCES})
@@ -161,6 +165,7 @@ if(IFX_HAVE_PLUGIN AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Tests/TestGui.cpp")
         Source/Plugin/PluginProcessor.cpp
         Source/Plugin/PluginEditor.cpp
         Source/Plugin/Diagnostics.cpp
+        Source/Plugin/CrashHookWin.cpp
         Tests/TestMain.cpp
         Tests/TestGui.cpp)
     target_include_directories(InterferenceGuiTests PRIVATE Source)

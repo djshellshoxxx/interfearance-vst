@@ -11,6 +11,28 @@ using namespace ifxtest;
 
 namespace
 {
+/** Every test in this binary works on a throw-away data root: presets, support files (crash
+    logs, troubleshooting files) and the options file never touch the user's real folders.
+    Set before main() runs (so before any processor exists), restored and deleted at exit. */
+struct TempDataRoot
+{
+    const juce::File dir = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                               .getChildFile ("InterferenceGuiTests_" + juce::String (juce::Time::currentTimeMillis()));
+    TempDataRoot()
+    {
+        dir.createDirectory();
+        StateIO::setDataRootOverride (dir);
+    }
+    ~TempDataRoot()
+    {
+        StateIO::setDataRootOverride ({});
+        dir.deleteRecursively();
+    }
+    TempDataRoot (const TempDataRoot&) = delete;
+    TempDataRoot& operator= (const TempDataRoot&) = delete;
+};
+const TempDataRoot tempDataRoot;
+
 juce::File snapshotDir()
 {
     auto d = juce::File::getSpecialLocation (juce::File::currentExecutableFile).getParentDirectory().getChildFile ("gui-snapshots");
@@ -242,8 +264,8 @@ IFX_TEST (Gui, everyTabOverlayPresetAndSourcePair)
     if (e == nullptr) { IFX_CHECK (false); return; }
     e->setSize (InterferenceEditor::kDefaultW, InterferenceEditor::kDefaultH);
     auto& v = e->view();
-    const char* tabNames[] = { "lane", "studio", "create", "routing" };
-    for (int t = 0; t < 4; ++t)
+    const char* tabNames[] = { "lane", "studio", "create", "routing", "environment" };
+    for (int t = 0; t < 5; ++t)
     {
         v.selectTab (t);
         pump (40);
@@ -424,10 +446,9 @@ IFX_TEST (Gui, debugToolsCrashLogHardResetAndSecretPixel)
     IFX_CHECK (log.contains ("troubleshooting file") && log.contains ("Hum =") && log.contains ("closed normally"));
     logFile.deleteFile();
 
-    // hard reset clears MIDI mappings and options (the user's options file is restored afterwards)
-    const auto settingsFile = r.proc->settings().getFile();
-    const bool hadSettings = settingsFile.existsAsFile();
-    const auto savedSettings = settingsFile.loadFileAsString();
+    // hard reset clears MIDI mappings and options (the options file lives in the temp data root)
+    IFX_CHECK (r.proc->settings().getFile().isAChildOf (tempDataRoot.dir));
+    IFX_CHECK (tf.isAChildOf (tempDataRoot.dir) && logFile.isAChildOf (tempDataRoot.dir));
     r.proc->startMidiLearn (P::jkWiggle);
     juce::AudioBuffer<float> b (2, 256);
     b.clear();
@@ -442,7 +463,11 @@ IFX_TEST (Gui, debugToolsCrashLogHardResetAndSecretPixel)
     IFX_CHECK (r.proc->getMidiMap().isEmpty());
     IFX_CHECK (r.proc->tooltipsEnabled());
     IFX_CHECK (r.proc->apvts.getRawParameterValue ("ghost_on")->load() < 0.5f);
+    // a MIDI learn left pending before a hard reset must not come back as a mapping
+    r.proc->startMidiLearn (P::jkWiggle);
+    r.proc->processBlock (b, cc);
+    d->performHardReset();
+    pump (120);
+    IFX_CHECK (r.proc->getMidiMap().isEmpty() && r.proc->midiLearnTarget() < 0);
     v.closeOverlay();
-    if (hadSettings)
-        settingsFile.replaceWithText (savedSettings);
 }

@@ -10,7 +10,7 @@ namespace ifx
 
 /** The single-window layout (master spec 8): header, mode + source row, two slot columns
     with functional illustrations, context controls, bottom tabs (lane / Studio / Create /
-    routing) and the output strip. A 30 Hz timer copies engine telemetry into the views. */
+    Routing / Environment) and the output strip. A 30 Hz timer copies engine telemetry into the views. */
 class MainView final : public juce::Component, private juce::Timer
 {
 public:
@@ -51,6 +51,8 @@ private:
     void setOverlay (std::unique_ptr<Overlay> o);
     void updateHeader();
     void layoutStream();
+    /** Shows an alert tied to this view (scoped: it closes when the editor goes away). */
+    void showMessage (const juce::MessageBoxOptions& options);
 
     InterferenceProcessor& proc;
 
@@ -74,13 +76,17 @@ private:
     SourceType illusType[2] { SourceType::None, SourceType::None };
     ContextPanel context;
     int selectedSlot = 0;
+    ParamToggle orderToggle;       // Swap Order, shown between the slot cards as "A -> B" / "B -> A"
+    juce::Rectangle<int> orderArea; // the column between the cards (order arrow drawn here)
 
     // bottom
-    juce::TextButton tabButtons[4];
+    juce::TextButton tabButtons[5];
+    juce::TextButton excBadge;     // "EXCITATION ON": visible while internal excitation feeds the circuit
     LaneEditor lane;
     StudioPanel studio;
     CreatePanel create;
     RoutingView routing;
+    EnvironmentPanel environment;
     OutputStrip output;
     int tab = 1;
     int lastMode = -1;
@@ -91,6 +97,7 @@ private:
     int lastDirty = -1;
     juce::String headerName;
     bool modified = false;
+    juce::ScopedMessageBox messageBox; // the one alert this view may show; closed with the view
 };
 
 } // namespace ifx

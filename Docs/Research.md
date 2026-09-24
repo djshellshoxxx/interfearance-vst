@@ -103,6 +103,45 @@ Continuous-Time Convolution.* DAFx-16, Brno. https://www.dafx.de/paper-archive/d
   transitions use short band-limited ramps instead of hard switches.
 - *Artistic:* **Digital Crush** aliases on purpose. It is labelled as a Studio effect.
 
+### Environment: hum colour, ground loops, dimmers and phones
+
+The environment models come from a separate, deeper research pass, `Docs/research/ElectricalInterference.md`.
+That note labels every claim and lists what could be read in full for each source. Main sources:
+
+- Whitlock, *Hum & Buzz in Unbalanced Interconnect Systems* (Jensen AN-004) and *Interconnection of Balanced and
+  Unbalanced Equipment* (AN-003).
+- Whitlock, *Understanding, Finding, & Eliminating Ground Loops*.
+- Whitlock and Fox, *Ground Loops: The Rest of the Story* (AES 129).
+- EN 50160 (mains voltage harmonics).
+- ETC, *Risetime and Lamp Noise*.
+- Claesson and Rossholm, *Notch Filtering of Humming GSM Mobile Telephone Noise*.
+
+What each model uses:
+
+- **Hum colour.** *Observed:* the mains voltage is a sine with small odd harmonics. Field (capacitive) pickup and
+  leakage currents respond to the rate of change, which weights harmonic *n* by about *n*. Even harmonics point to a
+  rectifier. *Inference:* the shared mains generator makes a line-shaped "round" waveform and a
+  harmonic-weighted "bright" one, neither with a 2nd harmonic. Body blends between them. The Supply buzz keeps its
+  2× mains pulses.
+- **Ground loop.** *Observed:* shield current × shield (and contact) resistance sits in series with the signal.
+  Typical figures: 2-prong leakage of 5 µA, 100 µA or 1 mA; shield resistance of milliohms per metre; 50 mΩ
+  contacts; ground differences from millivolts up to about 1 V (CATV). Balanced inputs reject roughly 30 dB, and
+  transformers much more, with rejection falling as frequency rises. *Inference:* V = I·R_loop, scaled to a 300 mV
+  nominal = −18 dBFS. A worn or partly open sleeve or shield raises R_loop, and a fully open one breaks the loop. The
+  interface filter's rejection falls 6 dB/octave above a knee. *Artistic:* the Natural/Expressive caps, and the
+  nominal-level mapping, which is a convention.
+- **Dimmer buzz.** *Observed:* a phase-control dimmer switches the load current at the firing angle, with a rise of
+  about 5 µs for a cheap dimmer and 350–800 µs for a choked one. The induced noise follows dI/dt and is loudest near
+  half brightness. *Inference:* firing-angle current with a polyBLEP step, a rise-time filter and differentiation.
+  That gives odd harmonics locked to the mains.
+- **2G phone.** *Observed:* GSM TDMA sends 577 µs bursts every 4.615 ms (216.7 Hz), with an idle frame every 26
+  frames, and audio circuits detect the envelope. *Inference:* a band-limited burst train through a receiver
+  band-pass, and a steep distance law (detected power falls as the square of the field). *Artistic:* the call-state
+  sequencing (check-in, incoming, in call) and the ±3 dB power drift.
+
+None of these numbers were measured on real gear for this release. They are starting points, like every other
+default.
+
 ## Calibration status (release gate)
 
 No dry/wet recordings of real faulty hardware were captured or bundled for this release. The models are therefore

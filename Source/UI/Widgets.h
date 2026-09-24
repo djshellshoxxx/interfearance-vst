@@ -3,6 +3,7 @@
 #include "Theme.h"
 #include "Plugin/PluginProcessor.h"
 #include <deque>
+#include <limits>
 
 namespace ifx
 {
@@ -41,13 +42,17 @@ public:
 
     void resized() override;
     void paint (juce::Graphics& g) override;
+    void paintOverChildren (juce::Graphics& g) override;
     void mouseEnter (const juce::MouseEvent&) override { repaint(); }
     void mouseExit (const juce::MouseEvent&) override { repaint(); }
 
     /** Grey the control out with a short reason (realism spec 9): value stays saved. */
     void setDormant (bool dormant, const juce::String& reason = {});
-    /** Show an effective (clamped) value indicator and "Limited by ..." text. */
+    /** Show a short "Limited by ..." reason under the value readout and in the tooltip
+        (empty = not limited). The stored value is never changed. */
     void setLimited (const juce::String& why);
+    /** Mark the effective (clamped) value on the arc, in real units; NaN clears it. */
+    void setEffective (float realValue);
 
     int getParamIndex() const noexcept { return index; }
     FineSlider slider;
@@ -61,6 +66,7 @@ private:
     juce::String dormantReason, limitedReason;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
     bool showValue = false;
+    float effectiveValue = std::numeric_limits<float>::quiet_NaN();
 };
 
 /** Toggle button bound to a Bool parameter. */
@@ -101,12 +107,14 @@ public:
     void resized() override;
     void paint (juce::Graphics& g) override;
     void mouseDown (const juce::MouseEvent& e) override;
+    /** Grey the choice out with a short reason (value stays saved), like ParamKnob::setDormant. */
+    void setDormant (bool dormant, const juce::String& reason = {});
     juce::ComboBox box;
     int getParamIndex() const noexcept { return index; }
 private:
     InterferenceProcessor& proc;
     int index;
-    juce::String caption;
+    juce::String caption, dormantReason;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> attachment;
 };
 

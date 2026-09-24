@@ -48,15 +48,23 @@ namespace
             "Mode row: Hardware / Play / Create, the four sources (the row shows which slot each is in and the two-source limit), "
             "Seed, Lock and New Take, Natural / Expressive.\n\n"
             "Slots: cards A and B (source, one-line physical cause, activity meter, gesture, enable, disturbance, Play, Why quiet?). "
-            "Below each card is its illustration. Illustrations draw the engine's actual state and are controls:\n"
+            "The button between the cards shows the processing order (A -> B or B -> A) and swaps it. "
+            "Below each card is its illustration. Illustrations draw the engine's actual state and are controls "
+            "(hover for a tooltip, right-click for MIDI learn / reset / type a value of the main control). "
+            "'motion limit reached' appears when a gesture could not complete in time and was merged with the next:\n"
             "  Loose Jack - drag the plug left/right (Move Plug); move up/down to wiggle it.\n"
             "  Exposed Plug Touch - press and hold on the finger; contact grows while held, drag down to press harder; release returns.\n"
             "  Cable Handling - drag along the cable to set the bend point; fast drags shake it.\n"
             "  Dirty Pot - drag to turn; double-click to show or hide the interior (track, wiper, worn arc).\n"
             "Every illustration has redundant labelled knobs in the context panel on the right (keyboard: arrows adjust, Space plays the gesture).\n\n"
-            "Context panel: the selected slot's controls. Details opens circuit mode, input stage, stereo, calibration and diagnostic meters "
-            "(through signal, electrical injection, mechanical injection).\n\n"
-            "Bottom tabs: Gesture Lane, Studio chain, Create, Routing. Output strip: Dry/Wet, Output, Monitor, Ceiling, Bypass and meters." });
+            "Context panel: the selected slot's controls. A control that asks for more than the circuit or range policy allows shows a "
+            "short yellow 'Limited' reason above it (also in its tooltip) and, where a value is clamped, a yellow tick on its arc at the "
+            "effective value; the stored value is never changed. Details opens the source circuit, input stage, trims, stereo, "
+            "environment (buzz, interference), range policy, order and linking, and diagnostic meters (healthy-reference level, "
+            "electrical injection, mechanical injection) with the contact state.\n\n"
+            "Bottom tabs: Gesture Lane, Studio chain, Create, Routing, Environment. While an internal excitation is feeding the circuit, an "
+            "'Excitation on' badge sits next to the tabs (click it to open Create). "
+            "Output strip: Dry/Wet, Output, Monitor, Ceiling, Bypass and meters." });
 
         s.add ({ "Loose Jack",
             "A TS plug in a worn jack (one tip/sleeve relationship; switching, TRS or powered jacks behave differently).\n"
@@ -67,7 +75,9 @@ namespace
             "  Recovery - how quickly the contact snaps back. Short to Sleeve - interruptions that ground (quiet) instead of floating (hum).\n"
             "  Pop - bias/charge in the circuit; transitions discharge it. With zero Pop only the interrupted signal clicks.\n"
             "  Shield - how well an open input is shielded from hum.\n"
-            "Contact changes gate the real signal: an open contact removes the through audio." });
+            "Contact changes gate the real signal: an open contact removes the through audio.\n"
+            "A fully seated plug on a healthy spot is stable: Wiggle and Intermittency then show 'Contact stable here'. "
+            "'Move toward worn area' (context panel, or the Why quiet? dialog) slowly moves the plug to Wear Position." });
 
         s.add ({ "Exposed Plug Touch",
             "An artistic, simplified input-coupling model (not an exact human-body circuit): a finger on a floating high-impedance "
@@ -102,6 +112,32 @@ namespace
             "Linked Gesture sends one movement to both slots; each keeps its own contacts, wear and random stream. Both slots share one "
             "mains phase and a global noise budget, so two exposed paths never make two independent full-scale hums." });
 
+        s.add ({ "Environment: hum, ground loop, dimmer, phone",
+            "The Environment tab sets the rig's electrical surroundings, shared by both slots (one mains phase). All of it is off or "
+            "quiet by default. Greyed controls do nothing in the current setting; the tooltip says why.\n\n"
+            "Mains and Hum: the 50/60 Hz field. Only exposed paths pick it up (open or partly inserted jack, touched tip, broken "
+            "shield). Resistive / magnetic pickup keeps a round hum; capacitive pickup (finger, floating tip) is brighter. Never "
+            "retuned to the song.\n"
+            "Buzz Band and Buzz Source: Supply = rectifier pulses twice per mains cycle (100/120 Hz buzz). Dimmer = a light dimmer's "
+            "switching spikes twice per cycle, loudest near half brightness, silent fully on or off. Dimmer Kind: Cheap Wall "
+            "switches in microseconds (harsh), Stage and TV Studio chokes are softer and darker. Interference: sparse RF-like chatter.\n"
+            "Ground loop: Other Gear makes current flow through the cable shield; current x shield resistance is hum in series with "
+            "the signal, entering before the slots. 2-prong gear leaks a small current (slightly buzzy hum); Grounded gear is driven "
+            "by the ground-voltage difference set by Outlets (round hum). Cable Run and Cable Shield set the resistance. Interface: "
+            "Unbalanced passes it all, Balanced removes about 30 dB, an Isolator about 70 dB at mains (a thin high buzz remains), an "
+            "Input Transformer about 100 dB. The readout is the measured loop hum after the interface.\n"
+            "2G Phone: a GSM phone's 217 Hz bursts detected by the circuit. Check-in = a few bursts, Incoming = handshake clusters, "
+            "In Call = continuous. Phone Distance: falls off steeply beyond a metre or two. (2G only: modern networks sound different.)\n\n"
+            "Playing it:\n"
+            "  With a ground loop on, shake or bend a cable with a damaged shield, or move a jack in and out at the sleeve (Seat / "
+            "Pull): that contact resistance is part of the loop, so the hum breathes with the movement (a sideways wiggle of a "
+            "seated plug does not touch the sleeve); pull the plug out and the loop breaks.\n"
+            "  Sweep Dimmer (automation or MIDI learn) with Buzz Source = Dimmer: a mains-locked wah, peaking at half brightness; the "
+            "pitch never moves.\n"
+            "  Automate Interface: an honest filter on the loop noise, from full hum to a thin isolator buzz.\n"
+            "  The phone's inner rhythm is fixed by the network timing; its state decides when it bursts (switch to Incoming on a bar "
+            "line, automate Distance for swells)." });
+
         s.add ({ "Gestures, MIDI and automation",
             "Gestures: Wiggle, Slow Turn, Tap, Shake, Touch and Release (per slot), plus source-aware lane gestures "
             "(Jack Wiggle/Seat/Pull, Touch Tap/Hold/Release, Cable Bend/Shake/Tap, Pot Turn-to-Angle/Sweep/Hold).\n\n"
@@ -114,13 +150,20 @@ namespace
             "  CC1 (mod wheel): continuous motion. Channel / poly aftertouch: pressure. CC120/123: release all.\n"
             "  Note-off releases held gestures (Touch and Release, Hold).\n\n"
             "Every parameter is automatable. Right-click any control for MIDI learn (then move a controller), clear mapping, reset or "
-            "typing an exact value. Host automation arrives at block rate; the engine smooths it and keeps gestures sample-accurate.\n"
+            "typing an exact value. Host automation arrives once per audio block: levels and gains (Dry/Wet, Dry Trim, Output, "
+            "Studio Level, Ceiling, Studio stage amounts, Drive gains) are smoothed over about 10 ms; knob positions (Move Plug, "
+            "Turn Knob, Bend, Touch) move the modelled hardware at its own finite speed, so fault events are never smeared; "
+            "gestures and MIDI events land on their exact sample.\n"
             "If a host does not send MIDI to effects, the GUI and automation provide the same controls." });
 
         s.add ({ "Gesture Lane / Machine Pattern",
             "Two lanes (A drives slot A, B drives slot B), 1-64 steps each; lengths can differ (A: 16 against B: 12). "
             "Each step: gesture, intensity, accent, ratchet (2-4 retriggers, coalesced with 'motion limit' if too fast), probability, "
-            "duration, position target (e.g. aim at the worn region), microtiming, Studio send and choke.\n"
+            "duration, position target (e.g. aim at the worn region), microtiming, Studio send and choke. "
+            "'Gap' (step menu, Loose Jack and Dirty Pot lanes) pulls the jack open or turns the pot to minimum for one step: "
+            "a real gesture, not a hidden gate (use the Studio Rhythm Gate for hard gating).\n"
+            "The two lanes share one clock, so A: 16 against B: 12 repeats every 48 steps; the clock line shows the position "
+            "in that combined cycle (at most 64 x 63 = 4032 steps).\n"
             "The lane schedules gesture STARTS only; the crackles inside stay physical. Swing and Humanize move starts; Density scales "
             "gesture probability; Evolve varies gesture choice per bar; Fill (or note 63) is a temporary denser variation.\n"
             "Keys: arrows move, Space toggles, +/- intensity, A accent, R ratchet, G gesture, P probability, C choke, Ctrl+C/V copy/paste, "
@@ -140,7 +183,23 @@ namespace
             "Fixed order: EQ > Contour > Drive > Crush > Resonator > Rhythm Gate > Echo, each with on/off and wet. "
             "Feedback is a bounded local loop from after the Resonator back into Drive, zero by default, with Kill Feedback. "
             "Rhythm Gate never gates the dry signal or the unaffected hardware path.\n"
-            "Raw Hardware bypasses Studio, feedback and excitation (keep excitation with Keep Excitation).\n"
+            "Stages:\n"
+            "  EQ - high-pass, low-pass, tilt around 1 kHz and a broad peak on the Studio signal.\n"
+            "  Contour - boosts or cuts transients (clicks, pops) separately from sustained material (hum body).\n"
+            "  Drive - antialiased saturator: Soft, Hard or Asymmetric curve, input Drive, Drive Output, tone and wet; DC is blocked.\n"
+            "  Digital Crush - bit depth and sample-and-hold rate (intentional aliasing), optional seeded dither.\n"
+            "  Auto Match (Drive page) - slow, bounded gain compensation for Drive and Crush.\n"
+            "  Resonator - two tuned, damped modes (frequency or MIDI note, ratio, decay, bounded feedback); never rings from silence.\n"
+            "  Rhythm Gate - Through, Pulse (keyed by steps, MIDI notes, sidechain or the signal's envelope) or Choke (closes on "
+            "choke steps; can also kill feedback and clear Echo). It only gates the Studio branch.\n"
+            "  Echo - short filtered delay, free or tempo-synced, with bounded repeats and Kill Tail.\n"
+            "  Feedback - Resonator output back into Drive through HP/LP filters and a delay; its amount is clamped for stability "
+            "(the panel shows 'Limited by loop stability').\n"
+            "Each stage has a small meter under its button: upper bar = input peak, lower bar = output peak.\n"
+            "Raw Hardware bypasses Studio, feedback, excitation and the hidden extra (keep excitation with Keep Excitation), so the "
+            "wet signal is exactly the modelled hardware C.\n"
+            "Ceiling (output strip) is an explicit peak ceiling: an instant-attack, stereo-linked gain rider with about 45 ms release "
+            "and a final clamp at the ceiling level. It is audible limiting when it acts; off means no limiting.\n"
             "Named buses: x dry input, R healthy reference, C0 contacts without injection, C full core, D = C0 - R, A = C - C0, "
             "P Studio output, W = R + U + P (the wet signal), y final output. Monitor chooses what leaves the plugin; it never changes "
             "the model. Latency is always 0 samples." });
@@ -154,7 +213,7 @@ namespace
             "For processing incoming track audio, the simplest route is the host's own bounce or record." });
 
         s.add ({ "Presets",
-            "Factory categories: Repair Faults, Rhythmic, One-Shots, Subtle Texture, Wild (Expressive) and Machine Pattern. "
+            "Factory categories: Repair Faults, Rhythmic, One-Shots, Subtle Texture, Wild (Expressive), Machine Pattern and Environment (ground loop, dimmer and phone). "
             "The menu offers Save, Save As, Open and 'Open preset folder'. A * after the name means the sound was changed since loading.\n"
             "User presets are .ifxpreset files in:\n"
             "  Windows: Documents\\Interference\\Presets\n"
@@ -166,8 +225,11 @@ namespace
 
         s.add ({ "Natural and Expressive",
             "Natural (default) applies strict physical caps. Expressive allows faster gestures, denser bursts and louder excitation - an "
-            "artistic extension, still causal, never measured hardware behaviour. Switching never rewrites your knob values; effective "
-            "limits are shown on the controls." });
+            "artistic extension, still causal, never measured hardware behaviour. Switching never rewrites your knob values. "
+            "When a setting asks for more than the policy or circuit allows, the control says so: e.g. Excitation Level above the "
+            "policy cap shows 'Limited by Natural cap' and a yellow tick at the level actually used (the badge next to the bottom "
+            "tabs adds '(capped)'); Feedback above the stable loop gain shows 'Limited by loop stability'; a healthy seated jack "
+            "shows 'Contact stable here'." });
 
         s.add ({ "Options",
             "The gear opens Options: tooltips on/off, audio and MIDI devices (stand-alone app only; in a DAW the host owns the devices), "
@@ -187,7 +249,9 @@ namespace
             "misconfigurations (bypass on, no active source, Dry/Wet 0 %, lane without a clock...). Freeze pauses it.\n"
             "- Create log file on crash: off every time the plug-in loads. When ticked, a time-stamped .log file is written to "
             "Documents\\Interference\\Support; it starts with a troubleshooting file, records events while you work and, if the "
-            "plug-in or host crashes, the error and a stack trace.\n"
+            "plug-in or host crashes, the error and a stack trace. Some crashes cannot be logged: fast-fail terminations "
+            "(security-check failures, heap corruption detected by Windows) end the process before any handler runs, and some "
+            "hosts catch plug-in crashes themselves. In those cases the log simply stops; send it anyway with your description.\n"
             "- Export troubleshooting file: a light self-test plus every setting, audio and MIDI setup, version, licence and host "
             "(DAW) information, saved as a .txt file in the same folder. It helps you and support with minor problems.\n"
             "- Reset all settings to default (hard reset): much stronger than Reset - also clears MIDI mappings, A/B and options and "

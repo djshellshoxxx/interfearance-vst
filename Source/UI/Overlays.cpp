@@ -60,6 +60,11 @@ void Overlay::close()
     if (onClose) onClose();
 }
 
+void Overlay::showMessage (const juce::MessageBoxOptions& options, std::function<void (int)> callback)
+{
+    messageBox = juce::AlertWindow::showScopedAsync (options.withAssociatedComponent (this), std::move (callback));
+}
+
 //==============================================================================
 HelpOverlay::HelpOverlay() : Overlay ("Help")
 {
@@ -231,13 +236,16 @@ DebugOverlay::DebugOverlay (InterferenceProcessor& p) : Overlay ("Debug"), proc 
 
     crashLog.setTooltip ("Write a time-stamped log to Documents\\Interference\\Support. It starts with a troubleshooting file, "
                          "records events while you work and, if the plug-in or host crashes, the error and a stack trace. "
-                         "Off every time the plug-in loads.");
+                         "Some crashes cannot be logged: fast-fail aborts (security checks, heap corruption detected by "
+                         "Windows) and hosts that catch plug-in crashes themselves. Off every time the plug-in loads.");
     crashLog.setToggleState (proc.isCrashLogging(), juce::dontSendNotification);
     crashLog.onClick = [this] { setCrashLog (crashLog.getToggleState()); };
     addAndMakeVisible (crashLog);
 
     exportButton.setTooltip ("Run a quick self-test and save it with every setting, audio / MIDI setup, version, licence and host "
-                             "information to a .txt file in Documents\\Interference\\Support.");
+                             "information to a .txt file in Documents\\Interference\\Support. The self-test renders one second "
+                             "offline (the window pauses briefly) and checks that the preset folder is writable, creating it if "
+                             "it is missing. The file contains folder paths, which include your user name.");
     exportButton.onClick = [this] { exportTroubleshooting (true); };
     openFolder.setTooltip ("Show the folder that holds crash logs and troubleshooting files.");
     openFolder.onClick = []
@@ -248,16 +256,7 @@ DebugOverlay::DebugOverlay (InterferenceProcessor& p) : Overlay ("Debug"), proc 
     };
     hardReset.setTooltip ("Troubleshooting only: resets every setting, clears MIDI mappings, A/B and options, and deletes the "
                           "options (cache) file. Your preset and audio files are kept.");
-    hardReset.onClick = [this]
-    {
-        juce::Component::SafePointer<DebugOverlay> safe (this);
-        juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
-                                          .withTitle ("Hard reset")
-                                          .withMessage ("Reset ALL settings to default, clear MIDI mappings, A/B and options, and delete the "
-                                                        "options file?\n\nPresets and rendered audio are not touched. This cannot be undone.")
-                                          .withButton ("Hard reset").withButton ("Cancel"),
-                                      [safe] (int result) { if (safe != nullptr && result == 1) safe->performHardReset(); });
-    };
+    hardReset.onClick = [this] { confirmHardReset(); };
     for (auto* b : { &exportButton, &openFolder, &hardReset })
         addAndMakeVisible (b);
 
@@ -272,16 +271,23 @@ DebugOverlay::DebugOverlay (InterferenceProcessor& p) : Overlay ("Debug"), proc 
                                 "Crash log: for crashes; it also contains a troubleshooting file.\n"
                                 "Both are saved in Documents\\Interference\\Support. If the plug-in hard-crashes, tick "
                                 "'Create log file on crash', reproduce the problem, then send the newest .log and a troubleshooting "
-                                "file to ") + Branding::supportEmail + " with a detailed description of what you did.",
+                                "file to ") + Branding::supportEmail + " with a detailed description of what you did.\n"
+                                "Some crashes cannot be logged (fast-fail aborts, or a host that catches plug-in crashes itself): "
+                                "then the log simply ends without a crash report.",
                   juce::dontSendNotification);
     refreshCrashStatus();
     cursor = 0;
     recent = proc.activitySince (cursor);
     timerCallback();
-    startTimerHz (5);
+    startTimerHz (2);
 }
 
-DebugOverlay::~DebugOverlay() { stopTimer(); }
+DebugOverlay::~DebugOverlay()
+{
+    stopTimer();
+    if (confirmBox != nullptr && confirmBox->isCurrentlyModal (false))
+        confirmBox->exitModalState (0); // the modal manager deletes it; the callback sees a dead overlay
+}
 
 void DebugOverlay::timerCallback()
 {
@@ -295,7 +301,37 @@ void DebugOverlay::timerCallback()
         events.moveCaretToEnd();
     }
     if (! freeze.getToggleState())
-        live.setText (Diagnostics::liveData (proc), false);
+    {
+        // setText re-lays out the whole editor and resets its scroll position: only when it changed
+        auto text = Diagnostics::liveData (proc);
+        if (text != lastLive)
+        {
+            live.setText (text, false);
+            lastLive = std::move (text);
+        }
+    }
+    // another instance may have taken the (one per process) crash log over
+    refreshCrashStatus();
+}
+
+void DebugOverlay::confirmHardReset()
+{
+    if (confirmBox != nullptr)
+        return;
+    auto* aw = new juce::AlertWindow ("Hard reset",
+                                      "Reset ALL settings to default, clear MIDI mappings, A/B and options, and delete the "
+                                      "options file?\n\nPresets and rendered audio are not touched. This cannot be undone.",
+                                      juce::MessageBoxIconType::WarningIcon, this);
+    // Cancel is the default: Return and Escape both cancel, only a click on "Hard reset" resets
+    aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey), juce::KeyPress (juce::KeyPress::returnKey));
+    aw->addButton ("Hard reset", 1);
+    confirmBox = aw;
+    juce::Component::SafePointer<DebugOverlay> safe (this);
+    aw->enterModalState (true, juce::ModalCallbackFunction::create ([safe] (int result)
+    {
+        if (safe != nullptr && result == 1)
+            safe->performHardReset();
+    }), true);
 }
 
 void DebugOverlay::refreshCrashStatus()
@@ -314,8 +350,8 @@ void DebugOverlay::setCrashLog (bool on)
         juce::File f;
         juce::String err;
         if (! proc.startCrashLog (f, err))
-            juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
-                                              .withTitle ("Cannot create crash log").withMessage (err).withButton ("OK"), nullptr);
+            showMessage (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
+                             .withTitle ("Cannot create crash log").withMessage (err).withButton ("OK"));
     }
     else if (! on)
         proc.stopCrashLog();
@@ -328,13 +364,13 @@ bool DebugOverlay::exportTroubleshooting (bool showPopup)
     juce::String err;
     const bool ok = Diagnostics::writeTroubleshootingFile (proc, f, err);
     if (showPopup)
-        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
-                                          .withIconType (ok ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon)
-                                          .withTitle (ok ? "Troubleshooting file saved" : "Could not save the troubleshooting file")
-                                          .withMessage (ok ? "Saved " + f.getFileName() + "\n\nLocation: " + f.getParentDirectory().getFullPathName()
-                                                             + "\n\nSend it to " + Branding::supportEmail + " with a description of the problem."
-                                                           : err)
-                                          .withButton ("OK"), nullptr);
+        showMessage (juce::MessageBoxOptions()
+                         .withIconType (ok ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon)
+                         .withTitle (ok ? "Troubleshooting file saved" : "Could not save the troubleshooting file")
+                         .withMessage (ok ? "Saved " + f.getFileName() + "\n\nLocation: " + f.getParentDirectory().getFullPathName()
+                                            + "\n\nSend it to " + Branding::supportEmail + " with a description of the problem."
+                                          : err)
+                         .withButton ("OK"));
     return ok;
 }
 
@@ -525,14 +561,13 @@ void RenderOverlay::finished()
     if (result.silent)
     {
         juce::Component::SafePointer<RenderOverlay> safe (this);
-        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
-                                          .withIconType (juce::MessageBoxIconType::WarningIcon)
-                                          .withTitle ("The render is silent")
-                                          .withMessage (result.silentReason + "\n\nExport the silent file anyway?")
-                                          .withButton ("Export anyway")
-                                          .withButton ("Cancel")
-                                          .withAssociatedComponent (this),
-                                      [safe] (int r) { if (safe != nullptr && r == 1) safe->chooseFileAndWrite(); });
+        showMessage (juce::MessageBoxOptions()
+                         .withIconType (juce::MessageBoxIconType::WarningIcon)
+                         .withTitle ("The render is silent")
+                         .withMessage (result.silentReason + "\n\nExport the silent file anyway?")
+                         .withButton ("Export anyway")
+                         .withButton ("Cancel"),
+                     [safe] (int r) { if (safe != nullptr && r == 1) safe->chooseFileAndWrite(); });
         status = "The result is silent (see the explanation).";
         repaint();
         return;
@@ -560,8 +595,8 @@ void RenderOverlay::chooseFileAndWrite()
         if (! OfflineRenderer::writeWav (safe->result.audio, safe->settings, f, true, err))
         {
             safe->status = "Export failed: " + err;
-            juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
-                                              .withTitle ("Export failed").withMessage (err).withButton ("OK"), nullptr);
+            safe->showMessage (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
+                                   .withTitle ("Export failed").withMessage (err).withButton ("OK"));
             safe->repaint();
             return;
         }
@@ -576,8 +611,8 @@ void RenderOverlay::chooseFileAndWrite()
                                + "\nPolicy: " + (safe->snapshot.isExpressive() ? "Expressive" : "Natural")
                                + (safe->snapshot.usesStudio() ? ", Studio-processed" : "") + (safe->snapshot.usesExcitation() ? ", internal excitation" : "");
         safe->status = "Saved " + f.getFullPathName();
-        juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::InfoIcon)
-                                          .withTitle ("Render saved").withMessage (msg).withButton ("OK"), nullptr);
+        safe->showMessage (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::InfoIcon)
+                               .withTitle ("Render saved").withMessage (msg).withButton ("OK"));
         safe->repaint();
     });
 }

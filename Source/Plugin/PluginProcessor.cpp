@@ -116,7 +116,11 @@ InterferenceProcessor::InterferenceProcessor()
     o.folderName = "Interference";
     o.osxLibrarySubFolder = "Application Support";
     o.commonToAllUsers = false;
-    settingsFile = std::make_unique<juce::PropertiesFile> (o);
+    // IFX_DATA_ROOT / StateIO::setDataRootOverride (tests, portable use) also moves the options file
+    const auto dataRoot = StateIO::dataRootOverride();
+    settingsFile = dataRoot == juce::File()
+                     ? std::make_unique<juce::PropertiesFile> (o)
+                     : std::make_unique<juce::PropertiesFile> (dataRoot.getChildFile ("Options").getChildFile ("Interference.settings"), o);
 
     loadedState = FactoryPresets::initState();
     abStates[0] = abStates[1] = loadedState;
@@ -127,7 +131,7 @@ InterferenceProcessor::InterferenceProcessor()
 InterferenceProcessor::~InterferenceProcessor()
 {
     stopTimer();
-    CrashLog::stop (this);
+    stopCrashLog(); // flushes the last events, unhooks, closes the file
     liveRecorder.stop();
 }
 
@@ -155,7 +159,12 @@ void InterferenceProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     sampleRateNow = sampleRate;
     const int ch = std::max (1, std::min (2, getMainBusNumOutputChannels()));
     engine.prepare (sampleRate, std::max (1, samplesPerBlock), ch);
-    pushNonParamToEngine();
+    // No pushNonParamToEngine() here: hosts may call prepareToPlay off the message thread while
+    // the UI edits `pattern` / `midiMap`. The engine already holds everything: every message-thread
+    // change is pushed when it happens (constructor, setSeed, setSlots, setPattern, applyState,
+    // MIDI learn), seed / slots / CC table are atomics and the pattern sits in the seqlock
+    // exchange, all of which survive Engine::prepare. applyPendingNow() picks up pending slots
+    // and the newest pattern.
     engine.applyPendingNow();
     captureBuf.setSize (2, std::max (1, samplesPerBlock));
     setLatencySamples (0); // zero-latency design (ADAA instead of oversampling, no lookahead)
@@ -170,8 +179,14 @@ double InterferenceProcessor::getTailLengthSeconds() const
 
 void InterferenceProcessor::snapshotParams() noexcept
 {
+    // a non-finite host value (NormalisableRange does not catch NaN) would otherwise stick in
+    // filter / saturator state until the next full reset
     for (int i = 0; i < kNumParams; ++i)
-        snap[i] = raw[i]->load (std::memory_order_relaxed);
+    {
+        const float v = raw[i]->load (std::memory_order_relaxed);
+        const auto& info = paramInfo (i);
+        snap[i] = std::isfinite (v) ? std::clamp (v, info.min, info.max) : info.def;
+    }
 }
 
 void InterferenceProcessor::translateMidi (const juce::MidiBuffer& midi, int numSamples) noexcept
@@ -611,6 +626,14 @@ void InterferenceProcessor::hardReset()
     // and deletes the options (cache) file. Presets, renders and support files are user data and stay.
     stopCrashLog();
     liveRecorder.stop();
+    // a pending learn or a queued learned CC would otherwise re-create a mapping on the next tick
+    // (this thread is the FIFO's only reader, so draining it here is safe)
+    cancelMidiLearn();
+    {
+        int start1, size1, start2, size2;
+        ccFifo.prepareToRead (ccFifo.getNumReady(), start1, size1, start2, size2);
+        ccFifo.finishedRead (size1 + size2);
+    }
     midiMap.clear();
     abValid[0] = abValid[1] = false;
     abIndex = 0;
@@ -733,6 +756,8 @@ juce::StringArray InterferenceProcessor::activitySince (juce::int64& cursor) con
     const juce::ScopedLock sl (activityLock);
     const juce::int64 first = historyEnd - history.size();
     juce::StringArray out;
+    if (cursor < first)
+        out.add ("(... " + juce::String (first - cursor) + " older events dropped: too many at once)");
     for (juce::int64 i = std::max (cursor, first); i < historyEnd; ++i)
         out.add (history[(int) (i - first)]);
     cursor = historyEnd;
@@ -797,14 +822,6 @@ void InterferenceProcessor::timerCallback()
     apply (start2, size2);
     ccFifo.finishedRead (size1 + size2);
 
-    // opt-in crash log: append recent activity about twice a second (message thread file IO)
-    if (++crashTicks >= 15)
-    {
-        crashTicks = 0;
-        if (CrashLog::isOwnedBy (this))
-            CrashLog::append (activitySince (crashCursor));
-    }
-
     // parameter changes -> data stream
     for (int i = 0; i < kNumParams; ++i)
     {
@@ -839,6 +856,25 @@ void InterferenceProcessor::timerCallback()
             default: break;
         }
     }
+
+    // opt-in crash log: append recent activity about twice a second, or sooner when a burst
+    // (automation, a busy lane) would push lines out of the 400-line history first
+    if (CrashLog::isOwnedBy (this))
+    {
+        if (++crashTicks >= 15 || pendingActivity (crashCursor) > 250)
+        {
+            crashTicks = 0;
+            CrashLog::append (activitySince (crashCursor));
+        }
+    }
+    else
+        crashTicks = 0;
+}
+
+juce::int64 InterferenceProcessor::pendingActivity (juce::int64 cursor) const
+{
+    const juce::ScopedLock sl (activityLock);
+    return historyEnd - cursor;
 }
 
 juce::AudioProcessorEditor* InterferenceProcessor::createEditor()

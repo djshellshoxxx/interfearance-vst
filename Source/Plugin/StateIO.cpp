@@ -335,9 +335,35 @@ bool loadPresetFile (const juce::File& file, PluginState& s, juce::String& error
     return true;
 }
 
+static juce::File& dataRootOverrideStorage()
+{
+    static juce::File root;
+    return root;
+}
+
+void setDataRootOverride (const juce::File& root)
+{
+    dataRootOverrideStorage() = root;
+}
+
+juce::File dataRootOverride()
+{
+    if (dataRootOverrideStorage() != juce::File())
+        return dataRootOverrideStorage();
+    const auto env = juce::SystemStats::getEnvironmentVariable ("IFX_DATA_ROOT", {}).trim().unquoted();
+    return env.isNotEmpty() && juce::File::isAbsolutePath (env) ? juce::File (env) : juce::File();
+}
+
+juce::File userDataFolder()
+{
+    const auto root = dataRootOverride();
+    return root != juce::File() ? root
+                                : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Interference");
+}
+
 juce::File userPresetFolder()
 {
-    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Interference").getChildFile ("Presets");
+    return userDataFolder().getChildFile ("Presets");
 }
 
 } // namespace StateIO

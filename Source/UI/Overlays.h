@@ -22,8 +22,15 @@ public:
 protected:
     virtual void layoutContent (juce::Rectangle<int> area) = 0;
     juce::Rectangle<int> panelBounds() const;
+
+    /** Every message box of an overlay goes through here: it opens over the plug-in window
+        (associated component) and is scoped to the overlay, so it closes with it and its
+        callback never runs after the overlay is gone. Showing a new box closes the previous one. */
+    void showMessage (const juce::MessageBoxOptions& options, std::function<void (int)> callback = {});
+
     juce::String title;
     juce::TextButton closeButton { "Close" };
+    juce::ScopedMessageBox messageBox;
 };
 
 class HelpOverlay final : public Overlay
@@ -78,6 +85,7 @@ private:
     void layoutContent (juce::Rectangle<int> area) override;
     void timerCallback() override;
     void refreshCrashStatus();
+    void confirmHardReset();
 
     InterferenceProcessor& proc;
     juce::TextEditor live, events;
@@ -87,6 +95,10 @@ private:
     juce::Label crashStatus, info;
     juce::int64 cursor = 0;
     juce::StringArray recent;
+    juce::String lastLive;
+    // the hard-reset confirmation needs its own key mapping (Return must not confirm), so it is a
+    // hand-built AlertWindow; the destructor dismisses it like a ScopedMessageBox would
+    juce::Component::SafePointer<juce::AlertWindow> confirmBox;
 };
 
 /** The hidden Ghost Carrier panel (easter egg): opened by clicking the tip of the signature

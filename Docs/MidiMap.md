@@ -36,8 +36,18 @@ parameter and is not also used as a gesture controller.
 
 ## Host automation
 
-All 140 parameters are automatable, with stable IDs (see `Parameters.md`). Continuous parameters are smoothed.
-Fault events are not smeared: automation moves the hardware, and the physics decides what happens.
+Every parameter is automatable, with stable IDs (see `Parameters.md` for the full list). Hosts send automation once
+per audio block. What happens next depends on the parameter:
+
+- **Levels and gains** (Dry/Wet, Dry Trim, Output, Studio Level, Ceiling, Studio stage amounts, Drive gains) are
+  smoothed per sample over about 10 ms, so fast automation does not zipper.
+- **Hardware positions** (Move Plug, Turn Knob, Bend, Touch and the like) move the modelled hardware, which travels
+  at a finite mechanical speed. Fault events are not smeared: automation moves the hardware, and the physics decides
+  what happens.
+- **Switches and choices** (modes, circuit, stage on/off) change at the block boundary, with the documented 10 ms
+  declick where a switch would otherwise click.
+
+Gestures from MIDI, the lane and the GUI start on their exact sample.
 
 Momentary parameters: `trigA`, `trigB` (play slot A or B's gesture while on), `fill`, `kill_fb` and `kill_tail`.
 Non-parameter state (seed, lock, take, slot sources, lane pattern, MIDI map) is saved with the project and presets

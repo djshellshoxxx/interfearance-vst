@@ -1,19 +1,7 @@
 #include "Diagnostics.h"
+#include "CrashHook.h"
 #include "PluginProcessor.h"
 #include "UI/HelpContent.h"
-#include <cstdio>
-
-#if JUCE_WINDOWS
- #ifndef NOMINMAX
-  #define NOMINMAX
- #endif
- #ifndef WIN32_LEAN_AND_MEAN
-  #define WIN32_LEAN_AND_MEAN
- #endif
- #include <windows.h>
-#else
- #include <csignal>
-#endif
 
 namespace ifx
 {
@@ -51,12 +39,19 @@ namespace
     {
         return p.param (param)->getCurrentValueAsText();
     }
+
+    /** The host never changes while the process runs: look it up once (it resolves the host path). */
+    const juce::String& hostDescription()
+    {
+        static const juce::String host (juce::PluginHostType().getHostDescription());
+        return host;
+    }
 }
 
 //==============================================================================
 juce::File Diagnostics::supportFolder()
 {
-    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Interference").getChildFile ("Support");
+    return StateIO::userDataFolder().getChildFile ("Support");
 }
 
 juce::StringArray Diagnostics::findMisconfigurations (InterferenceProcessor& p)
@@ -107,7 +102,7 @@ juce::String Diagnostics::liveData (InterferenceProcessor& p)
     juce::String s;
     const juce::String nl ("\n");
     s << "INTERFERENCE " << IFX_VERSION_STRING << "  |  " << juce::AudioProcessor::getWrapperTypeDescription (p.wrapperType)
-      << "  |  " << juce::PluginHostType().getHostDescription() << nl;
+      << "  |  " << hostDescription() << nl;
     s << "sample rate " << juce::String (t.sampleRate.load(), 0) << " Hz, block " << p.getBlockSize()
       << ", channels in/out " << p.getTotalNumInputChannels() << "/" << p.getTotalNumOutputChannels()
       << ", latency 0, tail " << juce::String (t.tailSeconds.load(), 2) << " s" << nl;
@@ -165,7 +160,7 @@ juce::String Diagnostics::troubleshootingReport (InterferenceProcessor& p)
       << "Memory: " << juce::SystemStats::getMemorySizeInMegabytes() << " MB" << nl << nl;
 
     s << "== Host (DAW) ==" << nl
-      << "Host: " << juce::PluginHostType().getHostDescription() << nl
+      << "Host: " << hostDescription() << nl
       << "Host program: " << juce::File::getSpecialLocation (juce::File::hostApplicationPath).getFileName() << nl
       << "Format: " << juce::AudioProcessor::getWrapperTypeDescription (p.wrapperType) << nl << nl;
 
@@ -290,91 +285,29 @@ bool Diagnostics::writeTroubleshootingFile (InterferenceProcessor& p, juce::File
 }
 
 //==============================================================================
+// The crash-time work lives in CrashHook (no JUCE, no heap). While a log is open every write
+// goes through CrashHook::write, because the hook holds the file open for appending.
 namespace
 {
-    std::atomic<bool> crashActive { false };
-    const void* crashOwner = nullptr;
+    const void* crashOwner = nullptr; // message thread only
     juce::File crashFile;
-   #if JUCE_WINDOWS
-    wchar_t crashPath[1024] {};
-    LPTOP_LEVEL_EXCEPTION_FILTER previousFilter = nullptr;
 
-    FILE* openCrashFile() { return _wfopen (crashPath, L"ab"); }
-   #else
-    char crashPath[1024] {};
-    using SignalHandler = void (*) (int);
-    const int kSignals[] = { SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL };
-    SignalHandler previousHandlers[5] {};
-
-    FILE* openCrashFile() { return std::fopen (crashPath, "ab"); }
-   #endif
-
-    void writeCrash (const char* what, unsigned long code, const void* address)
+    bool writeLog (const juce::String& text)
     {
-        if (! crashActive.load())
-            return;
-        if (FILE* f = openCrashFile())
-        {
-            std::fprintf (f, "\n==== CRASH ====\n%s, code 0x%08lX, address %p\n", what, code, address);
-            std::fflush (f);
-            // best effort: the process may be too damaged to produce a stack trace
-            const auto trace = juce::SystemStats::getStackBacktrace();
-            std::fputs (trace.toRawUTF8(), f);
-            std::fputs ("\n==== END ====\n", f);
-            std::fclose (f);
-        }
-    }
-
-   #if JUCE_WINDOWS
-    LONG WINAPI onUnhandledException (EXCEPTION_POINTERS* ep)
-    {
-        const auto* rec = ep != nullptr ? ep->ExceptionRecord : nullptr;
-        writeCrash ("Unhandled exception", rec != nullptr ? (unsigned long) rec->ExceptionCode : 0ul,
-                    rec != nullptr ? rec->ExceptionAddress : nullptr);
-        return previousFilter != nullptr ? previousFilter (ep) : EXCEPTION_CONTINUE_SEARCH;
-    }
-   #else
-    void onSignal (int sig)
-    {
-        writeCrash ("Fatal signal", (unsigned long) sig, nullptr);
-        for (int i = 0; i < 5; ++i)
-            if (kSignals[i] == sig)
-                std::signal (sig, previousHandlers[i] != nullptr ? previousHandlers[i] : SIG_DFL);
-        std::raise (sig);
-    }
-   #endif
-
-    void installHook()
-    {
-       #if JUCE_WINDOWS
-        const auto path = crashFile.getFullPathName();
-        path.copyToUTF16 (reinterpret_cast<juce::CharPointer_UTF16::CharType*> (crashPath), sizeof (crashPath));
-        previousFilter = SetUnhandledExceptionFilter (onUnhandledException);
-       #else
-        crashFile.getFullPathName().copyToUTF8 (crashPath, sizeof (crashPath));
-        for (int i = 0; i < 5; ++i)
-            previousHandlers[i] = std::signal (kSignals[i], onSignal);
-       #endif
-    }
-
-    void removeHook()
-    {
-       #if JUCE_WINDOWS
-        const auto current = SetUnhandledExceptionFilter (previousFilter);
-        if (current != onUnhandledException)
-            SetUnhandledExceptionFilter (current); // someone chained after us: keep theirs
-        previousFilter = nullptr;
-       #else
-        for (int i = 0; i < 5; ++i)
-            std::signal (kSignals[i], previousHandlers[i] != nullptr ? previousHandlers[i] : SIG_DFL);
-       #endif
+        return CrashHook::write (text.toRawUTF8(), text.getNumBytesAsUTF8());
     }
 }
 
 bool CrashLog::start (const void* owner, const juce::String& header, juce::File& written, juce::String& error)
 {
-    if (crashActive.load())
+    if (crashOwner != nullptr)
+    {
+        juce::String note;
+        note << "== Log handed over to another plug-in instance at " << juce::Time::getCurrentTime().toString (true, true, true, true)
+             << " (its newest events may be missing) ==" << juce::newLine;
+        writeLog (note);
         stop (crashOwner);
+    }
     const auto folder = Diagnostics::supportFolder();
     if (! folder.createDirectory().wasOk())
     {
@@ -388,36 +321,40 @@ bool CrashLog::start (const void* owner, const juce::String& header, juce::File&
         crashFile = juce::File();
         return false;
     }
+    if (! CrashHook::install (crashFile.getFullPathName().toRawUTF8()))
+    {
+        error = "Cannot open " + crashFile.getFullPathName() + " for crash logging";
+        crashFile = juce::File();
+        return false;
+    }
     crashOwner = owner;
-    installHook();
-    crashActive.store (true);
     written = crashFile;
     return true;
 }
 
 void CrashLog::append (const juce::StringArray& lines)
 {
-    if (! crashActive.load() || lines.isEmpty())
+    if (crashOwner == nullptr || lines.isEmpty())
         return;
     const auto time = juce::Time::getCurrentTime().formatted ("%H:%M:%S ");
     juce::String text;
     for (const auto& l : lines)
-        text << time << l << "\n";
-    crashFile.appendText (text, false, false, "\n");
+        text << time << l << juce::newLine;
+    writeLog (text);
 }
 
 void CrashLog::stop (const void* owner)
 {
-    if (! crashActive.load() || owner != crashOwner)
+    if (crashOwner == nullptr || owner != crashOwner)
         return;
-    crashActive.store (false);
-    removeHook();
-    crashFile.appendText ("== Log closed normally at " + juce::Time::getCurrentTime().toString (true, true, true, true) + " ==\n",
-                          false, false, "\n");
+    juce::String closing;
+    closing << "== Log closed normally at " << juce::Time::getCurrentTime().toString (true, true, true, true) << " ==" << juce::newLine;
+    writeLog (closing);
+    CrashHook::uninstall();
     crashOwner = nullptr;
 }
 
-bool CrashLog::isOwnedBy (const void* owner) { return crashActive.load() && owner == crashOwner; }
-juce::File CrashLog::currentFile() { return crashActive.load() ? crashFile : juce::File(); }
+bool CrashLog::isOwnedBy (const void* owner) { return crashOwner != nullptr && owner == crashOwner; }
+juce::File CrashLog::currentFile() { return crashOwner != nullptr ? crashFile : juce::File(); }
 
 } // namespace ifx

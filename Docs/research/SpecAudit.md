@@ -756,3 +756,51 @@ Every requirement row in sections 1–7 is counted once (the section 8 contradic
 - theme.md: no 80 ms value animation (V13), no resize cursor (V14), no slider ticks (V8), boxes inside boxes (V12).
 - Docs: the stale `Tests/TestLimits.cpp` comment (X5); "soft ceiling" wording (X6); "Jack Pull Pop" preset uses Wiggle (X9); industrial/feedback research provenance missing from Research.md (I6.1); freeze behaviour of tails undocumented (C3.12); licence-activation extension point (D19); MIDI import/export N/A decision (G18); PROGRESS.md stale (G23); Studio stage help section (G1).
 - Test extras: Passive-vs-Line response (W1); silence invariant over Tone circuit and Expressive (R2.2); linked-pop correlation (R7.5); stereo phase (C7.9); abrupt mid-run parameter changes (C7.8); full layout × tap matrix (C7.1).
+
+---
+
+## 11. Round 2 UI and doc fixes (2026-09-23; written, not yet compiled)
+
+| Item | Change | Files |
+|---|---|---|
+| P1.3 / R1.5 / R3.8 / R9.3 / X2 | `ParamKnob::setLimited` now draws the reason in the readout row (yellow, whenever the knob is not being touched) and adds "Limited: …" to the tooltip. New `ParamKnob::setEffective` draws a yellow tick on the arc at the effective value (in `paintOverChildren`). Wired: Excitation Level (reads `telemetry.excitationLimited` / `excitationEffectiveDb`, "Limited by Natural/Expressive cap"), Feedback ("Limited by loop stability", tick at `fbEffective`), jack Wiggle and Intermittency ("Contact stable here"; Intermittency sits in Details, so the old check never reached it), pot Scratch, Cable Shake and Mic | Widgets.h/.cpp, SlotPanel.cpp, StudioPanel.cpp |
+| P1.4 / R3.9 | "Move toward worn area" button in the Loose Jack context panel (highlighted when the engine reports a stable healthy contact), and as a second button in that slot's Why-quiet dialog. It ramps `jk_insert` to `jk_wearpos` over about 0.6 s inside one begin/end host gesture | SlotPanel.h/.cpp, MainView.cpp |
+| P1.5 / C3.5 / C3.13 | `StageMeter` under each of the seven stage buttons: upper bar input peak, lower bar output peak, read from `telemetry.stageIn/stageOut[0..6]` | StudioPanel.h/.cpp |
+| P2 M6.5 / C4.2 | Order button between the slot cards bound to `swap` ("A → B" / "B → A", with an "order" caption); RoutingView shows the live order | MainView.h/.cpp, StudioPanel.cpp |
+| P2 R8.5 / R9.9 | "Excitation on: <type> <level> dB (capped)" badge next to the bottom tabs, driven by `telemetry.excitationActive`; clicking it opens Create | MainView.h/.cpp |
+| P3 M8.7 / R9.7 / G19 | Illustrations: tooltip per source; right-click opens the primary parameter's menu (drags and mouse-up of that click are ignored) | Illustrations.h/.cpp |
+| P3 I2.11 | "motion limit reached" drawn for every source, top left of the illustration | Illustrations.cpp |
+| P3 M8.10 / R9.8 | Touch field intensity now comes from the measured injected level only; the rings stand still when nothing is picked up | Illustrations.cpp |
+| P3 C3.9 | RoutingView flow text now lists the feedback path and its amount (and the clamp) | StudioPanel.cpp |
+| P3 C3.6 | Studio note: "Gate: no clock, stays open" when a steps-keyed Pulse gate has no clock | StudioPanel.cpp |
+| P3 I3.2 / I3.4 / I3.6 | Lane clock line: "cycle n / N" while running; step-menu "Gap" item for jack and pot lanes (Pull or Turn to Angle, 0 % target, 1 step); maximum combined cycle documented | LaneEditor.cpp, Manual.md, HelpContent.cpp |
+| G1 | Help "Studio chain and routing" now explains every stage, the stage meters, Raw Hardware, and the Ceiling as an instant-attack linked rider with ~45 ms release plus a final clamp | HelpContent.cpp |
+| X1 | MidiMap.md and Help describe the real automation handling (gains smoothed ~10 ms, positions moved through the mechanics, switches at the block edge) | MidiMap.md, HelpContent.cpp |
+| X3 / C3.12 | Routing.md: tail is 0 with Studio off or Raw Hardware on; host freeze/bounce behaviour added | Routing.md |
+| X4 / C4.13 | Routing.md and Help: Raw Hardware also bypasses the Ghost Carrier (W = C) | Routing.md, HelpContent.cpp |
+| X5 | PhysicalLimits.h comment points at Tests/TestLimits.cpp plus the existing TestCore/TestSources/TestEngine bound tests | PhysicalLimits.h |
+| X6 | Manual and Routing.md describe the Ceiling as a peak ceiling (instant attack, ~45 ms release, final clamp), no longer "soft" | Manual.md, Routing.md |
+| X9 | "Jack Pull Pop" now has a lane step with the Pull gesture (played by the one-shot or note 38); the description matches | FactoryPresets.cpp |
+| X10 | "calibration" removed from the Details descriptions (Help, Manual, Details tooltip) | HelpContent.cpp, Manual.md, SlotPanel.cpp |
+| P1.7 | Placeholder homepage/e-mail recorded as release gate O8 | Issues.md |
+| W4 | Render does not capture live gestures: documented (Manual, Issues O9) | Manual.md, Issues.md |
+| Crash log | Help and Issues O7: fast-fail terminations and host-caught crashes cannot be logged | HelpContent.cpp, Issues.md |
+| Params | Parameters.md regenerated with `tools/gen_param_doc.py` (150 parameters) | Parameters.md |
+
+X8 (notes only, test files not edited): `Engine.pairMatrixBothOrdersFiniteAndDistinct` should either assert, for each pair, that
+swapping the order changes the output (or the per-slot event telemetry), or be renamed `…FiniteAndBounded`.
+
+Still open from this round: Details "through"/"electrical" meters need per-slot C0 and electrical-only peaks from
+the engine (Issues O10). Per-slot Solo was skipped: it cannot be done without a DSP change or without rewriting the
+other slot's enable parameter behind the host's back (Issues O11). Knobs now show the vertical-resize cursor; the rest of the theme.md polish (80 ms value animation,
+slider ticks) is not done.
+
+Addendum (same round): the 10 new environment parameters (commit 3c9d96a) get a fifth bottom tab, **Environment**
+(`EnvironmentPanel` in StudioPanel.h/.cpp, wired in MainView). It has two rows. Row 1: Mains, Hum, Buzz Band,
+Buzz Source, Dimmer, Dimmer Kind, Interference, 2G Phone, Distance. Row 2: Other Gear, Outlets, Cable Run, Cable
+Shield, Interface, and the measured "Ground loop: n dBFS" readout from `telemetry.groundLoopDb`. Controls are greyed
+with a reason: Dimmer and Dimmer Kind when Buzz Band is 0 or the source is Supply; Buzz Source when Buzz Band is 0;
+the loop controls when Other Gear is Off; Outlets when the gear is 2-prong (the engine uses Outlets only for Grounded
+gear); Distance when the phone is Away. `ParamChoice::setDormant` was added for this. Docs: Manual "Environment: hum,
+ground loop, dimmer, phone", a matching Help section, a Routing.md note on where the loop and phone enter, and
+Parameters.md regenerated. I used a tab rather than the Details drawer, which was already full.

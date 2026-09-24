@@ -22,6 +22,8 @@ public:
 
     std::function<void (int)> onSelect;
     std::function<void (int, SourceType)> onChooseSource;
+    /** "Move toward worn area" chosen in the Why-quiet dialog of a stable Loose Jack. */
+    std::function<void (int)> onGuideToWear;
 
 private:
     InterferenceProcessor& proc;
@@ -58,11 +60,15 @@ private:
 /** Context controls for the selected slot's source + a Details drawer (circuit mode, bias,
     stereo, calibration, diagnostics). Controls irrelevant to the current circuit are
     greyed with a reason, never removed or reset. */
-class ContextPanel final : public juce::Component
+class ContextPanel final : public juce::Component, private juce::Timer
 {
 public:
     explicit ContextPanel (InterferenceProcessor& p);
+    ~ContextPanel() override;
     void setSlot (int slotIndex, SourceType t);
+    /** Realism spec 3: guided action for a stable healthy jack. Ramps Move Plug toward the
+        worn zone (Wear Position) over ~0.6 s inside one host gesture. */
+    void moveTowardWornArea();
     void resized() override;
     void paint (juce::Graphics& g) override;
     void refresh (const SlotView& v);
@@ -72,6 +78,8 @@ public:
 
 private:
     void rebuild();
+    void timerCallback() override;
+    void endGuide();
     ParamKnob* knob (int param);
 
     InterferenceProcessor& proc;
@@ -79,6 +87,9 @@ private:
     SourceType type = SourceType::LooseJack;
     juce::OwnedArray<juce::Component> primary, detailControls;
     juce::TextButton details { "Details" };
+    juce::TextButton moveToWear { "Move toward worn area" };
+    float guideFrom = 1.0f, guideTo = 1.0f, guidePos = 0.0f;
+    bool guiding = false;
     LevelMeter throughMeter { "through" }, elecMeter { "electrical" }, mechMeter { "mechanical" };
     juce::Label diag;
     juce::Rectangle<int> freeArea;

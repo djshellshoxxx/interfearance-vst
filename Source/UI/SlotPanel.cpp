@@ -101,13 +101,25 @@ SlotCard::SlotCard (InterferenceProcessor& p, int s)
     why.setTooltip ("Explain what currently limits this source's sound.");
     why.onClick = [this]
     {
-        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
-                                          .withIconType (juce::MessageBoxIconType::InfoIcon)
-                                          .withTitle (juce::String ("Why is slot ") + (slot == 0 ? "A" : "B") + " quiet?")
-                                          .withMessage (explainQuiet (proc, slot, view))
-                                          .withButton ("OK")
-                                          .withAssociatedComponent (this),
-                                      nullptr);
+        auto options = juce::MessageBoxOptions()
+                           .withIconType (juce::MessageBoxIconType::InfoIcon)
+                           .withTitle (juce::String ("Why is slot ") + (slot == 0 ? "A" : "B") + " quiet?")
+                           .withMessage (explainQuiet (proc, slot, view))
+                           .withAssociatedComponent (this);
+        // a stable, healthy jack gets the guided action (realism spec 3)
+        const bool guide = proc.slotType (slot) == SourceType::LooseJack && (view.quiet & QuietHealthy) != 0;
+        if (! guide)
+        {
+            juce::AlertWindow::showAsync (options.withButton ("OK"), nullptr);
+            return;
+        }
+        juce::Component::SafePointer<SlotCard> safe (this);
+        juce::AlertWindow::showAsync (options.withButton ("Move toward worn area").withButton ("OK"),
+                                      [safe] (int result)
+                                      {
+                                          if (safe != nullptr && result == 1 && safe->onGuideToWear)
+                                              safe->onGuideToWear (safe->slot);
+                                      });
     };
     setWantsKeyboardFocus (false);
 }
@@ -255,7 +267,8 @@ void SourcePalette::resized()
 ContextPanel::ContextPanel (InterferenceProcessor& p) : proc (p)
 {
     details.setClickingTogglesState (true);
-    details.setTooltip ("Circuit mode, bias, stereo, advanced calibration and diagnostics.");
+    details.setTooltip ("Advanced controls: source circuit, input stage, trims, stereo, environment (buzz, interference), range policy, "
+                        "order and linking, plus diagnostic meters and contact state.");
     details.onClick = [this] { resized(); if (onLayoutChanged) onLayoutChanged(); };
     addAndMakeVisible (details);
     diag.setFont (Theme::monoFont (10.5f));
@@ -265,7 +278,55 @@ ContextPanel::ContextPanel (InterferenceProcessor& p) : proc (p)
     addChildComponent (throughMeter);
     addChildComponent (elecMeter);
     addChildComponent (mechMeter);
+    moveToWear.setTooltip ("Guided action: slowly moves the plug (Move Plug) to the worn zone set by Wear Position, "
+                           "where movement can make the contact fail. A healthy seated plug is stable by design.");
+    moveToWear.onClick = [this] { moveTowardWornArea(); };
+    addChildComponent (moveToWear);
     rebuild();
+}
+
+ContextPanel::~ContextPanel()
+{
+    stopTimer();
+    endGuide();
+}
+
+void ContextPanel::moveTowardWornArea()
+{
+    if (type != SourceType::LooseJack)
+        return;
+    auto* p = proc.param (P::jkInsert);
+    guideFrom = rawValue (proc, P::jkInsert);
+    guideTo = juce::jlimit (0.0f, 1.0f, rawValue (proc, P::jkWearPos));
+    guidePos = 0.0f;
+    if (! guiding)
+    {
+        p->beginChangeGesture();
+        guiding = true;
+    }
+    startTimerHz (30);
+}
+
+void ContextPanel::timerCallback()
+{
+    guidePos = std::min (1.0f, guidePos + 1.0f / 18.0f); // ~0.6 s at 30 Hz
+    const float s = guidePos * guidePos * (3.0f - 2.0f * guidePos);
+    auto* p = proc.param (P::jkInsert);
+    p->setValueNotifyingHost (p->convertTo0to1 (guideFrom + (guideTo - guideFrom) * s));
+    if (guidePos >= 1.0f)
+    {
+        stopTimer();
+        endGuide();
+    }
+}
+
+void ContextPanel::endGuide()
+{
+    if (guiding)
+    {
+        proc.param (P::jkInsert)->endChangeGesture();
+        guiding = false;
+    }
 }
 
 void ContextPanel::setSlot (int s, SourceType t)
@@ -317,6 +378,7 @@ void ContextPanel::rebuild()
     addChildComponent (detailControls.add (new ParamToggle (proc, P::preOn, "Input drive")));
     addChildComponent (detailControls.add (new ParamToggle (proc, P::linkGesture, "Link gesture")));
     addChildComponent (detailControls.add (new ParamToggle (proc, P::swapOrder, "Swap order")));
+    moveToWear.setVisible (type == SourceType::LooseJack);
     resized();
     repaint();
 }
@@ -341,15 +403,24 @@ void ContextPanel::refresh (const SlotView& v)
     dormant (P::jkPop, false, {});
 
     // "Limited by ..." indicators when a request exceeds what the circuit can produce
+    const bool stableJack = type == SourceType::LooseJack && (v.quiet & QuietHealthy) != 0;
+    auto limit = [&] (ParamKnob& k)
+    {
+        juce::String lim;
+        const int pi = k.getParamIndex();
+        if ((pi == P::jkIntermit || pi == P::jkWiggle) && stableJack) lim = "Contact stable here";
+        if (pi == P::ptScratch && (v.quiet & QuietStationary)) lim = "Pot is stationary";
+        if (pi == P::cbShake && rawValue (proc, P::cbMic) <= 0.0f && rawValue (proc, P::cbDamage) < 0.05f
+            && rawValue (proc, P::cbShieldDmg) < 0.05f) lim = "Healthy cable, mic off";
+        if (pi == P::cbMic && rawValue (proc, P::cbMic) > 0.0f && (v.quiet & QuietStationary)) lim = "Cable is still";
+        k.setLimited (lim);
+    };
     for (auto* c : primary)
-        if (auto* k = dynamic_cast<ParamKnob*> (c))
-        {
-            juce::String lim;
-            if (k->getParamIndex() == P::jkIntermit && (v.quiet & QuietHealthy)) lim = "Contact stable here";
-            if (k->getParamIndex() == P::ptScratch && (v.quiet & QuietStationary)) lim = "Pot is stationary";
-            if (k->getParamIndex() == P::cbShake && rawValue (proc, P::cbMic) <= 0.0f && rawValue (proc, P::cbDamage) < 0.05f) lim = "Healthy cable, mic off";
-            k->setLimited (lim);
-        }
+        if (auto* k = dynamic_cast<ParamKnob*> (c)) limit (*k);
+    for (auto* c : detailControls)
+        if (auto* k = dynamic_cast<ParamKnob*> (c)) limit (*k);
+    // the guided action is highlighted exactly when the engine reports a stable contact
+    moveToWear.setToggleState (stableJack, juce::dontSendNotification);
 
     if (details.getToggleState())
     {
@@ -390,6 +461,8 @@ void ContextPanel::resized()
         c->setBounds (cell);
         ++i;
     }
+    if (moveToWear.isVisible())
+        moveToWear.setBounds (r.removeFromTop (28).reduced (2).withWidth (std::min (220, r.getWidth() - 4)));
     const bool open = details.getToggleState();
     for (auto* c : detailControls) c->setVisible (open);
     throughMeter.setVisible (open);

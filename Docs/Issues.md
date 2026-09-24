@@ -13,7 +13,12 @@ or a documented limitation. Regression evidence names the automated test that gu
 | O4 | S3 | Hosts that do not pass MIDI to audio effects cannot play gestures from notes. | By design: the GUI, the Trigger A/B automation and the Gesture Lane cover every MIDI function. |
 | O5 | S3 | Offline *Render WAV* uses its own tempo field, not the host tempo map, and does not include host audio. | Documented export limitation. To process track audio, use the host's bounce or *Record*. |
 | O6 | S3 | Bit-identical output is guaranteed only at the same sample rate and plug-in version. | Documented in the manual (Seed, Lock and New Take). |
-| O7 | S3 | The crash log's stack trace is best effort: a badly corrupted process may only record the exception code. | Documented in Help → Debug. |
+| O7 | S3 | The crash log's stack trace is best effort: a badly corrupted process may only record the exception code. Fast-fail terminations (security-check failures, heap corruption detected by Windows) and crashes a host catches itself cannot be logged at all. | Documented in Help → Debug. |
+| O8 | S2 | **Placeholder homepage and support e-mail.** Help, the troubleshooting file and the plug-in metadata use `https://interference-audio.example` and `support@interference-audio.example` (`Source/UI/HelpContent.h`, `CMakeLists.txt`). | Release gate: the publisher must supply the real address and URL before release. |
+| O9 | S3 | *Render WAV* replays the lane and the slot gestures; it does not capture live illustration drags, knob moves or host automation. | Documented in the manual (Render and record). Program the gesture in the lane, or use *Record*. |
+| O10 | S3 | The Details "through" meter shows the healthy reference R, not the contact-affected path, and a Cable slot's "electrical" meter includes its mechanical signal. | Needs per-slot C0 and electrical-only peaks from the engine telemetry. |
+| O11 | S3 | No per-slot Solo / comparison audition. | Use A/B compare, or bypass the other slot with its On button. |
+| O12 | S3 | **Environment models are research-informed, not measured.** Ground-loop currents, ground-voltage differences, interface rejection, dimmer rise times and 2G burst levels are starting points taken from the literature in `research/ElectricalInterference.md`, not fitted to recordings. The loop is modelled as one loop in series with the input, before both slots. Only the Loose Jack *sleeve* (plug position) and a damaged Cable Handling *shield* change its resistance: a sideways jack wiggle at a seated position does not. The 2G phone is 2G/GSM behaviour only. | Documented in the manual (Environment). Same calibration gate as O2 for any "measured" claim. |
 
 ## Fixed (1.0.0 development)
 

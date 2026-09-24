@@ -384,7 +384,7 @@ public:
                 t = fbLp[ch].lp (t);
                 t = fbDc[ch].process (t);
                 t = std::tanh (t);
-                fbLine[ch].push (fbReturn > 0.0f ? t : 0.0f);
+                fbLine[ch].push (fbReturn > 0.0f && ! killNow ? t : 0.0f); // killed: record nothing
             }
 
             // 6 Rhythm Gate
@@ -399,7 +399,7 @@ public:
             {
                 const float delayed = echo[ch].read (echoDelay);
                 const float fb = echoLp[ch].lp (delayed) * echoFb * tailRamp;
-                const float inToEcho = stageMix[Echo] > 1.0e-4f ? v : 0.0f;
+                const float inToEcho = stageMix[Echo] > 1.0e-4f && ! tailKill ? v : 0.0f; // killed: record nothing
                 if (stageMix[Echo] > 1.0e-4f) pkIn[Echo] = std::max (pkIn[Echo], std::abs (v));
                 echo[ch].push (std::tanh (inToEcho + fb));
                 if (stageMix[Echo] > 1.0e-4f || std::abs (delayed) > 1.0e-6f)
@@ -451,7 +451,7 @@ public:
     static float smoothTo (float v, float target, float c) noexcept
     {
         const float n = target + (v - target) * c;
-        return std::abs (n - target) <= 1.0e-7f * std::max (1.0f, std::abs (target)) ? target : n;
+        return (n == v || std::abs (n - target) <= 1.0e-7f * std::max (1.0f, std::abs (target))) ? target : n;
     }
 
     float effectiveFeedback() const noexcept { return fbTarget; }

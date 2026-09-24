@@ -35,6 +35,62 @@ Illustration::Illustration (InterferenceProcessor& p, int slotIndex, SourceType 
     setTitle (juce::String (sourceName (t)) + " illustration (slot " + (slot == 0 ? "A" : "B") + ")");
     setDescription ("Interactive illustration. Arrow keys adjust the main control, Space plays the slot gesture.");
     setRepaintsOnMouseActivity (true);
+
+    juce::String tip;
+    switch (t)
+    {
+        case SourceType::LooseJack:
+            tip = "Loose Jack: drag the plug left/right to move it in or out (Move Plug); drag up/down to wiggle it. "
+                  "The coloured scale under the jack is the seeded worn zone the engine uses. The spring and signal path "
+                  "light up only in the contact state the engine reports.";
+            break;
+        case SourceType::PlugTouch:
+            tip = "Exposed Plug Touch: press and hold the finger to touch the tip (contact grows while held), drag down to press "
+                  "harder, release to let go. The rings follow the measured hum pickup, not a decoration.";
+            break;
+        case SourceType::CableHandling:
+            tip = "Cable Handling: drag along the cable to set the bend point; fast drags shake it. The highlighted spot is the "
+                  "seeded weak spot; the mic box shows whether the microphonic pickup is on.";
+            break;
+        case SourceType::DirtyPot:
+            tip = "Dirty Pot: drag or use the mouse wheel to turn the knob (Shift: fine); double-click to show or hide the interior. "
+                  "The dark arc is the seeded worn region the engine uses.";
+            break;
+        default:
+            tip = "Empty slot: the signal passes unchanged. Choose a source in the card above.";
+            break;
+    }
+    tip << "\nKeys: arrows adjust " << paramInfo (primaryParamFor (t, slotIndex)).name << ", Space plays the slot gesture."
+        << "\nRight-click: MIDI learn, reset or type a value for " << paramInfo (primaryParamFor (t, slotIndex)).name << ".";
+    setTooltip (tip);
+}
+
+int Illustration::primaryParamFor (SourceType t, int slotIndex) noexcept
+{
+    switch (t)
+    {
+        case SourceType::LooseJack:     return P::jkInsert;
+        case SourceType::PlugTouch:     return P::tcTouch;
+        case SourceType::CableHandling: return P::cbBend;
+        case SourceType::DirtyPot:      return P::ptTurn;
+        default:                        return slotIndex == 0 ? P::slotALevel : P::slotBLevel;
+    }
+}
+
+bool Illustration::handlePopup (const juce::MouseEvent& e)
+{
+    if (! e.mods.isPopupMenu())
+        return false;
+    popupActive = true;
+    showParamMenu (proc, primaryParam(), *this);
+    return true;
+}
+
+bool Illustration::finishPopup() noexcept
+{
+    const bool was = popupActive;
+    popupActive = false;
+    return was;
 }
 
 Illustration::~Illustration()
@@ -120,6 +176,9 @@ void Illustration::paint (juce::Graphics& g)
     // state caption (text as well as colour: never colour alone)
     Theme::drawLabel (g, stateText(), getLocalBounds().removeFromBottom (18).reduced (8, 0), juce::Justification::centredLeft,
                       view.openness > 0.5f ? Theme::warning : Theme::textMuted, 10.0f);
+    // industrial spec 2: a gesture that could not complete in time was coalesced (every source)
+    if (view.motionLimited && type != SourceType::None)
+        Theme::drawLabel (g, "motion limit reached", getLocalBounds().removeFromTop (18).reduced (8, 0), juce::Justification::centredLeft, Theme::warning, 9.0f);
     if (! view.enabled)
         Theme::drawLabel (g, "bypassed (settings kept)", getLocalBounds().removeFromBottom (18).reduced (8, 0), juce::Justification::centredRight, Theme::textMuted, 10.0f);
     if (hasKeyboardFocus (false))
@@ -287,8 +346,6 @@ namespace
                 g.setColour (Theme::accent2);
                 g.drawLine (tip.getCentreX(), py, tip.getCentreX(), cy - bore - 2.0f, 2.0f);
             }
-            if (view.motionLimited)
-                Theme::drawLabel (g, "motion limit reached", a.toNearestInt().removeFromTop (14), juce::Justification::centredRight, Theme::warning, 9.0f);
             handleArea = handle.getUnion (sleeve);
             scaleX0 = x0;
             scaleW = travel;
@@ -296,12 +353,14 @@ namespace
 
         void mouseDown (const juce::MouseEvent& e) override
         {
+            if (handlePopup (e)) return;
             downInsert = value (P::jkInsert);
             downY = e.position.y;
             beginEdit (P::jkInsert);
         }
         void mouseDrag (const juce::MouseEvent& e) override
         {
+            if (popupActive) return;
             setValue (P::jkInsert, downInsert + (float) e.getDistanceFromDragStartX() / std::max (40.0f, scaleW));
             const float dy = std::abs (e.position.y - downY);
             if (dy > 6.0f)
@@ -310,7 +369,7 @@ namespace
                 downY = e.position.y;
             }
         }
-        void mouseUp (const juce::MouseEvent&) override { endEdit (P::jkInsert); }
+        void mouseUp (const juce::MouseEvent&) override { if (! finishPopup()) endEdit (P::jkInsert); }
 
     private:
         juce::Rectangle<float> handleArea;
@@ -337,12 +396,15 @@ namespace
         {
             const float cy = a.getCentreY() + a.getHeight() * 0.12f;
             const float r = std::min (a.getHeight(), a.getWidth() * 0.4f) * 0.12f;
-            // mains field: concentric arcs whose intensity follows the engine's coupling
-            const float field = juce::jlimit (0.0f, 1.0f, view.auxOpenness * 2.0f + value (P::hum) * 0.15f);
+            // mains field: concentric arcs whose intensity is the engine's measured pickup (injected
+            // level relative to the hum cap); they only move while hum is actually being picked up
+            const float field = juce::jlimit (0.0f, 1.0f, view.activity * 12.5f);
+            const float ringStep = a.getWidth() * 0.07f;
+            const float ringOffset = field > 0.02f ? std::fmod (anim * 12.0f, ringStep) : 0.0f;
             const auto src = juce::Point<float> (a.getX() + a.getWidth() * 0.1f, a.getY() + a.getHeight() * 0.2f);
             for (int i = 0; i < 6; ++i)
             {
-                const float rad = (float) (i + 1) * a.getWidth() * 0.07f + std::fmod (anim * 12.0f, a.getWidth() * 0.07f);
+                const float rad = (float) (i + 1) * ringStep + ringOffset;
                 g.setColour (Theme::accent2.withAlpha (0.05f + 0.35f * field * (1.0f - (float) i / 6.0f)));
                 g.drawEllipse (juce::Rectangle<float> (rad * 2.0f, rad * 2.0f).withCentre (src), 1.0f);
             }
@@ -386,6 +448,7 @@ namespace
 
         void mouseDown (const juce::MouseEvent& e) override
         {
+            if (handlePopup (e)) return;
             baseline = value (P::tcTouch);
             downY = e.position.y;
             held = 0.0f;
@@ -394,10 +457,12 @@ namespace
         }
         void mouseDrag (const juce::MouseEvent& e) override
         {
+            if (popupActive) return;
             extra = juce::jlimit (-1.0f, 1.0f, (e.position.y - downY) / 80.0f); // drag down = press harder
         }
         void mouseUp (const juce::MouseEvent&) override
         {
+            if (finishPopup()) return;
             stopTimer();
             setValue (P::tcTouch, baseline); // release returns to the baseline
             endEdit (P::tcTouch);
@@ -509,6 +574,7 @@ namespace
 
         void mouseDown (const juce::MouseEvent& e) override
         {
+            if (handlePopup (e)) return;
             beginEdit (P::cbBend);
             setValue (P::cbBend, (e.position.x - scaleX0) / std::max (40.0f, scaleW));
             lastX = e.position.x;
@@ -516,6 +582,7 @@ namespace
         }
         void mouseDrag (const juce::MouseEvent& e) override
         {
+            if (popupActive) return;
             setValue (P::cbBend, (e.position.x - scaleX0) / std::max (40.0f, scaleW));
             const double now = juce::Time::getMillisecondCounterHiRes();
             const float speed = std::abs (e.position.x - lastX) / (float) std::max (1.0, now - lastT); // px/ms
@@ -524,7 +591,7 @@ namespace
             lastX = e.position.x;
             lastT = now;
         }
-        void mouseUp (const juce::MouseEvent&) override { endEdit (P::cbBend); }
+        void mouseUp (const juce::MouseEvent&) override { if (! finishPopup()) endEdit (P::cbBend); }
 
     private:
         float scaleX0 = 0, scaleW = 100, lastX = 0;
@@ -613,17 +680,19 @@ namespace
             Theme::drawLabel (g, interior ? "interior (double-click: knob)" : "double-click: show interior", a.toNearestInt().removeFromTop (12), juce::Justification::centredRight, Theme::textMuted, 9.0f);
         }
 
-        void mouseDown (const juce::MouseEvent&) override
+        void mouseDown (const juce::MouseEvent& e) override
         {
+            if (handlePopup (e)) return;
             downTurn = value (P::ptTurn);
             beginEdit (P::ptTurn);
         }
         void mouseDrag (const juce::MouseEvent& e) override
         {
+            if (popupActive) return;
             const float d = (float) (e.getDistanceFromDragStartX() - e.getDistanceFromDragStartY()) / (e.mods.isShiftDown() ? 600.0f : 200.0f);
             setValue (P::ptTurn, downTurn + d);
         }
-        void mouseUp (const juce::MouseEvent&) override { endEdit (P::ptTurn); }
+        void mouseUp (const juce::MouseEvent&) override { if (! finishPopup()) endEdit (P::ptTurn); }
         void mouseDoubleClick (const juce::MouseEvent&) override { interior = ! interior; repaint(); }
         void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w) override
         {

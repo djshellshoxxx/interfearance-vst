@@ -7,7 +7,7 @@ namespace
 {
     float rawValue (InterferenceProcessor& p, int param) { return p.apvts.getRawParameterValue (paramInfo (param).id)->load(); }
     const char* modeNames[] = { "Hardware", "Play", "Create" };
-    const char* tabNames[] = { "Gesture Lane", "Studio", "Create", "Routing" };
+    const char* tabNames[] = { "Gesture Lane", "Studio", "Create", "Routing", "Environment" };
 
     juce::Path gearPath (juce::Rectangle<float> r)
     {
@@ -30,8 +30,8 @@ namespace
 
 MainView::MainView (InterferenceProcessor& p)
     : proc (p), palette (p), policy (p, P::policy),
-      cards { { p, 0 }, { p, 1 } }, context (p),
-      lane (p), studio (p), create (p), routing (p), output (p)
+      cards { { p, 0 }, { p, 1 } }, context (p), orderToggle (p, P::swapOrder, "A > B"),
+      lane (p), studio (p), create (p), routing (p), environment (p), output (p)
 {
     setWantsKeyboardFocus (true);
 
@@ -51,8 +51,8 @@ MainView::MainView (InterferenceProcessor& p)
         {
             juce::String err;
             if (! proc.loadPresetFile (userPresets[id - 1000], err))
-                juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
-                                                  .withTitle ("Could not load preset").withMessage (err).withButton ("OK"), nullptr);
+                showMessage (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
+                                                  .withTitle ("Could not load preset").withMessage (err).withButton ("OK"));
         }
         grabKeyboardFocus();
     };
@@ -126,14 +126,19 @@ MainView::MainView (InterferenceProcessor& p)
     {
         cards[s].onSelect = [this] (int slot) { selectSlot (slot); };
         cards[s].onChooseSource = [this] (int slot, SourceType t) { proc.setSlotSource (slot, t); selectSlot (slot); };
+        cards[s].onGuideToWear = [this] (int slot) { selectSlot (slot); context.moveTowardWornArea(); };
         addAndMakeVisible (cards[s]);
     }
+    orderToggle.setTooltip ("Processing order of the two slots (Swap Order). A -> B: slot A's output feeds slot B, so a "
+                            "downstream open contact interrupts the upstream source's artifacts. Click to swap; settings stay in their slots.\n"
+                            "Right-click: MIDI learn, reset, type a value.");
+    addAndMakeVisible (orderToggle);
     addAndMakeVisible (context);
     context.onLayoutChanged = [this] { layoutStream(); };
     rebuildIllustrations();
 
     // ---- bottom tabs
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 5; ++i)
     {
         tabButtons[i].setButtonText (tabNames[i]);
         tabButtons[i].setClickingTogglesState (true);
@@ -141,10 +146,17 @@ MainView::MainView (InterferenceProcessor& p)
         tabButtons[i].onClick = [this, i] { selectTab (i); };
         addAndMakeVisible (tabButtons[i]);
     }
+    excBadge.setClickingTogglesState (false);
+    excBadge.setToggleState (true, juce::dontSendNotification); // accent styling
+    excBadge.setTooltip ("Internal excitation (a labelled studio source) is feeding the modeled circuit: part of what you hear is "
+                         "this test signal revealing the faults, not the hardware on its own. Click to open Create.");
+    excBadge.onClick = [this] { selectTab (2); };
+    addChildComponent (excBadge);
     addChildComponent (lane);
     addChildComponent (studio);
     addChildComponent (create);
     addChildComponent (routing);
+    addChildComponent (environment);
     addAndMakeVisible (output);
     create.onRender = [this] { showRender(); };
     create.onRecord = [this] { toggleRecord(); };
@@ -163,12 +175,13 @@ MainView::~MainView()
 //==============================================================================
 void MainView::selectTab (int index)
 {
-    tab = juce::jlimit (0, 3, index);
+    tab = juce::jlimit (0, 4, index);
     tabButtons[tab].setToggleState (true, juce::dontSendNotification);
     lane.setVisible (tab == 0);
     studio.setVisible (tab == 1);
     create.setVisible (tab == 2);
     routing.setVisible (tab == 3);
+    environment.setVisible (tab == 4);
 }
 
 void MainView::selectSlot (int s)
@@ -283,8 +296,8 @@ void MainView::showMainMenu()
                 {
                     juce::String err;
                     if (! v.proc.savePresetFile (f, err))
-                        juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
-                                                          .withTitle ("Save failed").withMessage (err).withButton ("OK"), nullptr);
+                        v.showMessage (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
+                                                          .withTitle ("Save failed").withMessage (err).withButton ("OK"));
                     v.refreshPresetBox();
                 }
                 break;
@@ -303,6 +316,12 @@ void MainView::showMainMenu()
     });
 }
 
+void MainView::showMessage (const juce::MessageBoxOptions& options)
+{
+    // scoped: the box closes with the editor instead of outliving it (plug-in windows can be closed any time)
+    messageBox = juce::AlertWindow::showScopedAsync (options.withAssociatedComponent (this), {});
+}
+
 void MainView::savePresetAs()
 {
     const auto folder = StateIO::userPresetFolder();
@@ -319,14 +338,14 @@ void MainView::savePresetAs()
         f = f.withFileExtension (StateIO::kPresetExtension);
         juce::String err;
         if (! safe->proc.savePresetFile (f, err))
-            juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
-                                              .withTitle ("Save failed").withMessage (err).withButton ("OK"), nullptr);
+            safe->showMessage (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
+                                              .withTitle ("Save failed").withMessage (err).withButton ("OK"));
         else if (safe->proc.getCurrentState().isExpressive())
-            juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::InfoIcon)
+            safe->showMessage (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::InfoIcon)
                                               .withTitle ("Saved (Expressive)")
                                               .withMessage ("This preset uses the Expressive range policy: an artistic extension, not measured hardware behaviour. "
                                                             "The label is stored in the preset.")
-                                              .withButton ("OK"), nullptr);
+                                              .withButton ("OK"));
         safe->refreshPresetBox();
     });
 }
@@ -342,8 +361,8 @@ void MainView::openPreset()
         if (f == juce::File()) return;
         juce::String err;
         if (! safe->proc.loadPresetFile (f, err))
-            juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
-                                              .withTitle ("Could not open preset").withMessage (err).withButton ("OK"), nullptr);
+            safe->showMessage (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
+                                              .withTitle ("Could not open preset").withMessage (err).withButton ("OK"));
         safe->refreshPresetBox();
     });
 }
@@ -356,14 +375,14 @@ void MainView::toggleRecord()
         const auto file = rec.getFile();
         const auto n = rec.stop();
         const double sr = std::max (1.0, proc.currentSampleRate());
-        juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::InfoIcon)
+        showMessage (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::InfoIcon)
                                           .withTitle ("Recording saved")
                                           .withMessage ("Saved " + file.getFileName() + "\n\nLocation: " + file.getParentDirectory().getFullPathName()
                                                         + "\nLength: " + juce::String ((double) n / sr, 2) + " s"
                                                         + "\nQuality: " + juce::String (sr / 1000.0, 1) + " kHz / 24-bit PCM / "
                                                         + (proc.currentChannels() == 1 ? "mono" : "stereo")
                                                         + (rec.samplesDropped() > 0 ? "\nWarning: " + juce::String ((int) rec.samplesDropped()) + " samples were dropped (disk too slow)." : juce::String()))
-                                          .withButton ("OK"), nullptr);
+                                          .withButton ("OK"));
         return;
     }
     const auto dir = juce::File (proc.settings().getValue ("renderFolder", juce::File::getSpecialLocation (juce::File::userMusicDirectory).getFullPathName()));
@@ -379,8 +398,8 @@ void MainView::toggleRecord()
         f = f.withFileExtension ("wav");
         juce::String err;
         if (! safe->proc.recorder().start (f, safe->proc.currentSampleRate(), safe->proc.currentChannels(), 24, true, err))
-            juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
-                                              .withTitle ("Cannot record").withMessage (err).withButton ("OK"), nullptr);
+            safe->showMessage (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
+                                              .withTitle ("Cannot record").withMessage (err).withButton ("OK"));
         else
             safe->proc.settings().setValue ("renderFolder", f.getParentDirectory().getFullPathName());
     });
@@ -460,6 +479,26 @@ void MainView::timerCallback()
             modeButtons[i].setToggleState (i == mode, juce::dontSendNotification);
     }
 
+    // processing order between the cards
+    const bool swapped = rawValue (proc, P::swapOrder) > 0.5f;
+    const juce::String orderText (juce::CharPointer_UTF8 (swapped ? "B \xe2\x86\x92 A" : "A \xe2\x86\x92 B"));
+    if (orderToggle.getButtonText() != orderText)
+        orderToggle.setButtonText (orderText);
+
+    // realism spec 8: make it obvious when the internal excitation is part of the sound
+    const bool excOn = t.excitationActive.load();
+    if (excOn)
+    {
+        const auto excName = juce::StringArray::fromTokens (paramInfo (P::excType).choices, "|", "")[(int) rawValue (proc, P::excType)];
+        juce::String badge = "Excitation on: " + excName + " " + juce::String (t.excitationEffectiveDb.load(), 0) + " dB";
+        if (t.excitationLimited.load())
+            badge << " (capped)";
+        if (excBadge.getButtonText() != badge)
+            excBadge.setButtonText (badge);
+    }
+    if (excBadge.isVisible() != excOn)
+        excBadge.setVisible (excOn);
+
     for (int s = 0; s < 2; ++s)
     {
         const auto v = SlotView::read (t.slot[s]);
@@ -471,6 +510,7 @@ void MainView::timerCallback()
     if (studio.isVisible()) studio.refresh();
     if (create.isVisible()) create.refresh();
     if (routing.isVisible()) routing.refresh();
+    if (environment.isVisible()) environment.refresh();
     output.refresh();
     stream.addLines (proc.drainActivity());
 }
@@ -493,6 +533,11 @@ void MainView::paint (juce::Graphics& g)
     // gear icon
     g.setColour (gearButton.isMouseOver() ? Theme::text : Theme::textMuted);
     g.fillPath (gearPath (gearButton.getBounds().toFloat().reduced (6.0f)));
+
+    // processing order: caption above the toggle between the slot cards
+    if (! orderArea.isEmpty())
+        Theme::drawLabel (g, "order", orderArea.withHeight (orderArea.getHeight() / 2 - 14).removeFromBottom (14),
+                          juce::Justification::centred, Theme::textMuted, 9.0f);
 
     // section separators (1 px lines, never boxes in boxes)
     g.setColour (Theme::edge);
@@ -564,24 +609,30 @@ void MainView::resized()
     auto outArea = bottom.removeFromRight (250);
     tabs.removeFromRight (250);
     for (auto& t : tabButtons)
-        t.setBounds (tabs.removeFromLeft (120).reduced (1, 0));
+        t.setBounds (tabs.removeFromLeft (104).reduced (1, 0));
+    excBadge.setBounds (tabs.removeFromRight (std::min (230, std::max (0, tabs.getWidth() - 8))).reduced (1, 0));
     bottom.removeFromTop (6);
     bottom.removeFromBottom (12);
-    for (auto* c : std::initializer_list<juce::Component*> { &lane, &studio, &create, &routing })
+    for (auto* c : std::initializer_list<juce::Component*> { &lane, &studio, &create, &routing, &environment })
         c->setBounds (bottom.withTrimmedRight (12));
     output.setBounds (outArea.withTrimmedTop (-26).withTrimmedBottom (12));
 
     // middle: two slot columns + context panel
     auto ctx = r.removeFromRight (juce::jlimit (320, 420, W * 30 / 100));
     context.setBounds (ctx.withTrimmedLeft (12));
-    const int colW = r.getWidth() / 2;
+    // the processing-order toggle sits in a narrow column between the two slot cards
+    constexpr int orderW = 64;
+    const int colW = (r.getWidth() - orderW) / 2;
     for (int s = 0; s < 2; ++s)
     {
-        auto col = r.removeFromLeft (colW).reduced (s == 0 ? 0 : 4, 0).withTrimmedRight (s == 0 ? 4 : 0);
+        auto col = r.removeFromLeft (colW);
         cards[s].setBounds (col.removeFromTop (118));
         col.removeFromTop (6);
         if (illus[s] != nullptr) illus[s]->setBounds (col);
+        if (s == 0)
+            orderArea = r.removeFromLeft (orderW).withHeight (118);
     }
+    orderToggle.setBounds (orderArea.withSizeKeepingCentre (orderW - 8, 26));
     layoutStream();
     if (overlay != nullptr)
         overlay->setBounds (getLocalBounds());

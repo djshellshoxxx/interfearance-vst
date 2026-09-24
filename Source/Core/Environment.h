@@ -89,7 +89,7 @@ public:
         frameCount = 0;
         gsmBlep.reset();
         gsmHpState = gsmHpPrev = gsmLp1 = gsmLp2 = 0.0;
-        gsmActive = false;
+        gsmActive = gsmRunning = false;
         gsmCounter = 0;
         gsmClusterLeft = 0;
         gsmLevel = gsmLevelTarget = 1.0;
@@ -109,7 +109,15 @@ public:
         const double tr = rise[std::clamp (kind, 0, 2)];
         dimK = 1.0 - std::exp (-1.0 / (tr * fs));
     }
-    void setPhone (Phone p) noexcept { phone = p; }
+    void setPhone (Phone p) noexcept
+    {
+        if (p != phone)
+        {
+            phone = p;
+            gsmCounter = 0;      // re-plan at the next frame boundary instead of after the old segment
+            gsmClusterLeft = 0;
+        }
+    }
 
     Sample step() noexcept
     {
@@ -148,7 +156,7 @@ public:
             {
                 // capacitor-input rectifier: current pulses at 2x mains near the voltage peaks
                 const double r = std::abs (s1), r2 = r * r, r4 = r2 * r2, r5 = r4 * r;
-                s.buzz = (float) ((r5 * r5 - 0.18) * 1.1);
+                s.buzz = (float) ((r5 * r5 - 0.246) * 1.1);
             }
             else
                 s.buzz = (float) dimmerStep (prevPhase);
@@ -176,9 +184,12 @@ public:
         else
             rfAm = 0.0;
 
-        s.gsm = phone != Phone::Away ? (float) gsmStep() : 0.0f;
-        if (phone == Phone::Away)
-            gsmActive = false;
+        if (phone != Phone::Away || gsmRunning)
+        {
+            s.gsm = (float) gsmStep();
+            // after Away the current burst completes and the receiver filters ring out
+            gsmRunning = phone != Phone::Away || gsmActive || std::abs (s.gsm) > 1.0e-6f;
+        }
         return s;
     }
 
@@ -195,19 +206,34 @@ private:
         const double dTheta = 2.0 * kPiD * freq / fs;
         const double theta = std::fmod (phase * 2.0 * kPiD, kPiD);
         const double sign = phase < 0.5 ? 1.0 : -1.0;
-        const bool newHalf = prevTheta < 0.0 || theta < prevTheta || (prevPhase < 0.5) != (phase < 0.5);
-        const double naive = theta >= dimAlpha && dimAlpha < kPiD ? sign * std::sin (theta) : 0.0;
-        if (dimAlpha > 0.0 && dimAlpha < kPiD && theta >= dimAlpha && (newHalf || prevTheta < dimAlpha))
+        const bool first = prevTheta < 0.0;
+        const bool newHalf = first || theta < prevTheta || (prevPhase < 0.5) != (phase < 0.5);
+        if (newHalf)
         {
-            const double u = std::clamp ((theta - dimAlpha) / dTheta, 0.0, 1.0);
-            dimBlep.add (u, sign * std::sin (dimAlpha));
+            // the triac fires once per half-cycle at the angle latched at its zero crossing and
+            // conducts until the next zero crossing (automation cannot switch it off mid-cycle)
+            alphaHalf = dimAlpha;
+            fired = first && alphaHalf < kPiD && theta >= alphaHalf; // after a reset: already conducting
         }
+        if (! fired && alphaHalf < kPiD && theta >= alphaHalf)
+        {
+            fired = true;
+            if (alphaHalf > 0.0)
+                dimBlep.add (std::clamp ((theta - alphaHalf) / dTheta, 0.0, 1.0), sign * std::sin (alphaHalf));
+        }
+        const double naive = fired ? sign * std::sin (theta) : 0.0;
         prevTheta = theta;
+        if (first)
+        {
+            dimBlep.prevNaive = naive; // start in steady state: no tick on enable / reset
+            dimI = dimPrevI = naive;
+        }
         const double iBl = dimBlep.out (naive);
         dimI += (iBl - dimI) * dimK;                 // rise time of the switching current
         const double dIdt = (dimI - dimPrevI) * fs / (2.0 * kPiD * 9000.0);
         dimPrevI = dimI;
-        return std::clamp (dIdt * 2.0, -1.5, 1.5);
+        const double guard = 1.5 * std::max (1.0, fs / 48000.0); // numeric guard only; the injection low-pass sets the peak
+        return std::clamp (dIdt * 2.0, -guard, guard);
     }
 
     /** 2G (GSM/TDMA) handset: 577 us bursts every 4.615 ms (216.7 Hz), every 26th frame idle,
@@ -310,7 +336,8 @@ private:
     double rfLp1 = 0, rfLp2 = 0, rfAm = 0, rfAmTarget = 0, lpC = 0.3, amC = 0.001;
 
     // dimmer
-    double dimAlpha = kPiD * 0.5, dimK = 1.0, dimI = 0.0, dimPrevI = 0.0, prevTheta = -1.0;
+    double dimAlpha = kPiD * 0.5, alphaHalf = kPiD, dimK = 1.0, dimI = 0.0, dimPrevI = 0.0, prevTheta = -1.0;
+    bool fired = false;
     DelayedBlep dimBlep;
 
     // GSM
@@ -318,7 +345,7 @@ private:
     double gsmHpState = 0.0, gsmHpPrev = 0.0, gsmLp1 = 0.0, gsmLp2 = 0.0, gsmLevel = 1.0, gsmLevelTarget = 1.0;
     int64_t frameCount = 0;
     int gsmCounter = 0, gsmClusterLeft = 0, gsmDriftCounter = 0;
-    bool gsmActive = false;
+    bool gsmActive = false, gsmRunning = false;
     DelayedBlep gsmBlep;
 };
 

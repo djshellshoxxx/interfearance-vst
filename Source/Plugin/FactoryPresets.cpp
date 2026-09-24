@@ -161,10 +161,12 @@ namespace
         }
         {
             Builder b ("Jack Pull Pop", "One-Shots",
-                       "A charged input: pulling the plug discharges it as a bounded pop. Trigger A to play.",
+                       "A charged input: a contact break discharges it as a bounded pop. Play one-shot pattern (or MIDI note 38) "
+                       "pulls the plug out; Trigger A wiggles it in the worn zone.",
                        SourceType::LooseJack);
             b.set (P::mode, 2).set (P::excType, 3).set (P::excLevel, -24).set (P::jkPop, 0.7f).set (P::jkWear, 0.6f).set (P::jkInsert, 0.9f)
              .set (P::gestureA, 0).set (P::hum, 0.2f).set (P::jkShield, 0.4f);
+            b.step (0, 0, 0.9f, 2); // lane gesture 2 of a Loose Jack = Pull (played by the one-shot)
             add (b);
         }
         {
@@ -254,13 +256,65 @@ namespace
             for (int i = 0; i < 12; i += 2) b.step (1, i, 0.6f, i % 3, 0, 1, 0.8f);
             add (b);
         }
+
+        // ---------------------------------------------------------------- Environment (appended in 1.0.0:
+        // new presets go at the end so existing host program numbers stay the same)
+        {
+            Builder b ("Breathing Ground Loop", "Environment",
+                       "A 2-prong amp leaks current through 30 m of foil-shielded cable: quiet, real-world loop hum that dips and flutters "
+                       "as the broken braid (slot A) is shaken. MIDI note 50 pulls the jack in slot B out and breaks the loop.",
+                       SourceType::CableHandling, SourceType::LooseJack);
+            b.set (P::glGear, 3).set (P::glRun, 30.0f).set (P::glShield, 0).set (P::glIface, 0).set (P::hum, 0.0f)
+             .set (P::cbShieldDmg, 0.6f).set (P::cbDamage, 0.0f).set (P::cbWeakPos, 0.5f).set (P::cbBend, 0.5f).set (P::cbShake, 0.25f)
+             .set (P::cbMic, 0.0f).set (P::jkInsert, 1.0f).set (P::jkWear, 0.15f).set (P::jkWiggle, 0.0f);
+            add (b);
+        }
+        {
+            Builder b ("Loop Fixed: Isolator", "Environment",
+                       "The same ground loop through a balanced input with an isolator box: about 70 dB less hum, a faint high buzz "
+                       "remains. Compare it with Breathing Ground Loop (A/B) to hear the fix.",
+                       SourceType::CableHandling, SourceType::LooseJack);
+            b.set (P::glGear, 3).set (P::glRun, 30.0f).set (P::glShield, 0).set (P::glIface, 2).set (P::hum, 0.0f)
+             .set (P::cbShieldDmg, 0.6f).set (P::cbDamage, 0.0f).set (P::cbWeakPos, 0.5f).set (P::cbBend, 0.5f).set (P::cbShake, 0.25f)
+             .set (P::cbMic, 0.0f).set (P::jkInsert, 1.0f).set (P::jkWear, 0.15f).set (P::jkWiggle, 0.0f);
+            add (b);
+        }
+        {
+            Builder b ("Dimmer Wah", "Environment",
+                       "A cheap wall dimmer buzzes into a touched, exposed input. Automate Dimmer (Environment tab): the rasp swells "
+                       "to a peak at half brightness and vanishes fully on or off, always locked to the mains.",
+                       SourceType::PlugTouch);
+            b.set (P::buzz, 0.8f).set (P::buzzType, 1).set (P::dimBright, 0.5f).set (P::dimKind, 0).set (P::hum, 0.15f)
+             .set (P::tcTouch, 0.5f).set (P::tcPressure, 0.8f).set (P::tcExposure, 0.9f).set (P::tcShield, 0.05f).set (P::tcPop, 0.0f)
+             .set (P::mix, 1.0f);
+            add (b);
+        }
+        {
+            Builder b ("Phone Rings Nearby", "Environment",
+                       "A finger on an exposed input hums softly while a 2G phone 25 cm away gets an incoming call: its dit-dit handshake "
+                       "clusters come and go. Set 2G Phone to In Call for the steady burst, or move it away.",
+                       SourceType::PlugTouch);
+            b.set (P::gsm, 2).set (P::gsmDist, 0.25f).set (P::hum, 0.2f).set (P::tcTouch, 0.35f).set (P::tcPressure, 0.8f)
+             .set (P::tcExposure, 0.7f).set (P::tcShield, 0.2f).set (P::tcPop, 0.1f);
+            add (b);
+        }
+        {
+            Builder b ("Cable-TV Hum Monster", "Wild",
+                       "Expressive: gear grounded through a cable-TV line drives a huge round loop hum through 30 m of foil shield; "
+                       "a worn jack stutters it and Studio Drive grits it up. The Ceiling keeps peaks safe.",
+                       SourceType::LooseJack);
+            b.set (P::policy, 1).set (P::glGear, 4).set (P::glOutlets, 3).set (P::glRun, 30.0f).set (P::glShield, 0).set (P::glIface, 0)
+             .set (P::hum, 0.2f).set (P::jkInsert, 0.8f).set (P::jkWear, 0.6f).set (P::jkWearPos, 0.78f).set (P::jkWiggle, 0.3f)
+             .set (P::studioOn, 1).set (P::studioSrc, 0).set (P::drOn, 1).set (P::drPre, 9).set (P::drPost, -10).set (P::ceilOn, 1);
+            add (b);
+        }
         return bank;
     }
 }
 
 const juce::StringArray& categories()
 {
-    static const juce::StringArray c { "Repair Faults", "Rhythmic", "One-Shots", "Subtle Texture", "Wild", "Machine Pattern" };
+    static const juce::StringArray c { "Repair Faults", "Rhythmic", "One-Shots", "Subtle Texture", "Wild", "Machine Pattern", "Environment" };
     return c;
 }
 

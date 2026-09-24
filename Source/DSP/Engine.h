@@ -244,10 +244,11 @@ public:
         static const float ifaceG0[4] = { 1.0f, 0.0316f, 3.16e-4f, 1.0e-5f }; // CMRR at mains: 0 / 30 / 70 / 100 dB
         static const double ifaceFk[4] = { 1.0, 3000.0, 53.0, 67.0 };    // rejection falls 6 dB/oct above f_k
         const int glGear = std::clamp (prm.choice (P::glGear), 0, 4);
+        const float glLeakT = glGear >= 1 && glGear <= 3 ? (float) glLeak[glGear] : 0.0f;
         const int glIface = std::clamp (prm.choice (P::glIface), 0, 3);
         const double glRloop = std::clamp ((double) prm[P::glRun], 0.3, 30.0) * rShieldPerM[std::clamp (prm.choice (P::glShield), 0, 2)]
                              + 2.0 * 0.05;                                // two connector contacts, 50 mohm each
-        const double glVd = glVdiff[std::clamp (prm.choice (P::glOutlets), 0, 3)];
+        const float glVdT = glGear == 4 ? (float) glVdiff[std::clamp (prm.choice (P::glOutlets), 0, 3)] : 0.0f;
         const float glCap = limit (limits::backgroundCeiling, policy);
         const float glG0 = ifaceG0[glIface];
         const float glDiffK = glIface == 0 ? 0.0f : (float) (fs / (2.0 * kPi * ifaceFk[glIface]));
@@ -372,6 +373,7 @@ public:
             dryS = dryG; wetS = wetG; outS = outTrim; studioLvlS = studioLevel; ceilS = ceiling;
             preDriveS = preDrive; preClipS = preClip; ghostAmtS = ghostAmtT;
             humS = humT; buzzS = buzzT; rfS = rfT;
+            glLeakS = glLeakT; glVdS = glVdT; glRloopS = (float) glRloop; glG0S = glG0; glDiffKS = glDiffK; gsmLevelS = gsmLevel;
             curTap = prevTap = (int) monitor; tapFade = 1.0f;
             curSrc = prevSrc = studioSrc; srcFade = 1.0f;
             passiveMix = passiveOn ? 1.0f : 0.0f;
@@ -423,7 +425,7 @@ public:
                 studio.setChoke (false, false, false);
             if (sendSamples > 0 && --sendSamples == 0)
                 sendTarget = 1.0f;
-            sendGain = sendTarget + (sendGain - sendTarget) * smoothCoeff;
+            sendGain = smoothTo (sendGain, sendTarget, smoothCoeff);
 
             // ---- per-sample smoothing of block targets --------------------------------
             dryS = smoothTo (dryS, dryG, smoothCoeff);
@@ -467,8 +469,8 @@ public:
             ctx.env = env.step();
 
             // ---- input conditioning + excitation ---------------------------------
-            trim = trimTarget + (trim - trimTarget) * smoothCoeff;
-            excGain = excGainTarget + (excGain - excGainTarget) * smoothCoeff;
+            trim = smoothTo (trim, trimTarget, smoothCoeff);
+            excGain = smoothTo (excGain, excGainTarget, smoothCoeff);
             if (excType != excTypeActive && excGain < 1.0e-5f)
             {
                 excTypeActive = excType; // switch waveforms only while silent
@@ -526,8 +528,16 @@ public:
                 paths[0][ch] = paths[1][ch] = paths[2][ch] = p[ch];
 
             // ---- ground loop + 2G phone: injected into the complete path only (part of bus A) ----
+            // every block-rate amount glides per sample, so automating Cable Run / Distance or
+            // switching gear, outlets, interface or phone never zippers or clicks
+            glLeakS = smoothTo (glLeakS, glLeakT, smoothCoeff);
+            glVdS = smoothTo (glVdS, glVdT, smoothCoeff);
+            glRloopS = smoothTo (glRloopS, (float) glRloop, smoothCoeff);
+            glG0S = smoothTo (glG0S, glG0, smoothCoeff);
+            glDiffKS = smoothTo (glDiffKS, glDiffK, smoothCoeff);
+            gsmLevelS = smoothTo (gsmLevelS, gsmLevel, smoothCoeff);
             float envInj = 0.0f;
-            if (glGear > 0)
+            if (glLeakS > 0.0f || glVdS > 0.0f)
             {
                 // a worn / partly open sleeve (Loose Jack) or shield (Cable Handling) adds resistance, so
                 // the hum breathes with movement; a fully open ground breaks the loop
@@ -535,19 +545,21 @@ public:
                 for (int s = 0; s < 2; ++s)
                     if (src[s] != nullptr && slotOn[s] && (slotType[s] == SourceType::LooseJack || slotType[s] == SourceType::CableHandling))
                         open = std::max (open, (double) std::clamp (src[s]->tele.auxOpenness, 0.0f, 1.0f));
-                const double r = glRloop + 1.0 * open;
-                const double v = (glGear < 4 ? glLeak[glGear] * r : glVd * r / (r + 0.5)) * (1.0 - open);
-                const float glLvl = std::min ((float) (v / 0.3 * 0.126), glCap); // 300 mV nominal = -18 dBFS
-                const float cm = glLvl * (glGear < 4 ? ctx.env.humBright : ctx.env.humClean); // leakage buzz vs IR hum
-                const float res = glG0 * (cm + (cm - glPrev) * glDiffK);
+                const double r = glRloopS + 1.0 * open;
+                const double vLeak = glLeakS * r * (1.0 - open);                 // 2-prong leakage current source
+                const double vGnd = glVdS * r / (r + 0.5) * (1.0 - open);        // grounded: ground-voltage difference
+                const float lvlLeak = std::min ((float) (vLeak / 0.3 * 0.126), glCap); // 300 mV nominal = -18 dBFS
+                const float lvlGnd = std::min ((float) (vGnd / 0.3 * 0.126), glCap);
+                const float cm = lvlLeak * ctx.env.humBright + lvlGnd * ctx.env.humClean; // leakage buzz vs IR hum
+                const float res = glG0S * (cm + (cm - glPrev) * glDiffKS);
                 glPrev = cm;
                 glPeak = std::max (glPeak, std::abs (res));
                 envInj += res;
             }
             else
                 glPrev = 0.0f;
-            if (gsmLevel > 0.0f)
-                envInj += gsmLevel * ctx.env.gsm;
+            if (gsmLevelS > 0.0f)
+                envInj += gsmLevelS * ctx.env.gsm;
             if (envInj != 0.0f)
                 for (int ch = 0; ch < nch; ++ch)
                     paths[2][ch] += envInj;
@@ -987,7 +999,9 @@ private:
     static float smoothTo (float v, float target, float c) noexcept
     {
         const float n = target + (v - target) * c;
-        return std::abs (n - target) <= 1.0e-7f * std::max (1.0f, std::abs (target)) ? target : n;
+        // a float one-pole can stall a few ulp short of the target (n == v): snap then, so
+        // identities (0 % wet = exact dry, k >= 1 = exact wet) hold once a move settles
+        return (n == v || std::abs (n - target) <= 1.0e-7f * std::max (1.0f, std::abs (target))) ? target : n;
     }
 
     static void selectStudioSource (int src, float r, float c, float d, float a, float& f, float& u) noexcept
@@ -1117,7 +1131,7 @@ private:
     float trim = 1.0f, excGain = 0.0f, studioMix = 0.0f, rawMix = 0.0f, bypassMix = 0.0f, ceilGain = 1.0f;
     float slotMix[2] { 1.0f, 1.0f };
     float ghostRamp = 0.0f;
-    float glPrev = 0.0f;
+    float glPrev = 0.0f, glLeakS = 0.0f, glVdS = 0.0f, glRloopS = 1.0f, glG0S = 1.0f, glDiffKS = 0.0f, gsmLevelS = 0.0f;
     // smoothed block targets and switch crossfades
     bool snapGains = true;
     float dryS = 0.0f, wetS = 1.0f, outS = 1.0f, studioLvlS = 1.0f, ceilS = 1.0f, preDriveS = 1.0f, preClipS = 1.0f,
