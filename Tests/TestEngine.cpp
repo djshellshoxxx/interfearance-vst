@@ -536,3 +536,87 @@ IFX_TEST (Engine, ghostCarrierModulatesOnlyTheWetPathAndIsBounded)
     IFX_CHECK (maxAbsDiff (render (64, 0.0f, true), in) == 0.0);   // dry path untouched
     IFX_CHECK (maxAbsDiff (render (64, 1.0f, false), in) == 0.0);  // off = exact identity
 }
+
+IFX_TEST (Engine, feedbackLoopIsBlockSizeIndependent)
+{
+    // the feedback-loop DC blocker must not be reset every block (review M3)
+    auto render = [] (int block)
+    {
+        Harness h (kFs, 2, block);
+        h.params = quietParams();
+        h.params[P::hum] = 0.4f;
+        h.params[P::jkInsert] = 0.85f;
+        h.params[P::jkWiggle] = 0.6f;
+        h.params[P::studioOn] = 1.0f;
+        h.params[P::studioSrc] = 2.0f;
+        h.params[P::drOn] = 1.0f;
+        h.params[P::rsOn] = 1.0f;
+        h.params[P::fbAmount] = 0.6f;
+        h.setSlots (SourceType::LooseJack, SourceType::None);
+        return h.run (drums (2, (int) kFs, kFs));
+    };
+    const auto a = render (64), b = render (333);
+    IFX_CHECK_MSG (maxAbsDiff (a, b) < 1e-5, "64 vs 333: " + juce::String (maxAbsDiff (a, b)));
+}
+
+IFX_TEST (Engine, killFeedbackAndTailHeldStayCheap)
+{
+    // a held Kill must clear the delay stores once, not on every sample (review M4)
+    Harness h (kFs, 2, 256);
+    h.params = quietParams();
+    h.params[P::studioOn] = 1.0f;
+    h.params[P::ecOn] = 1.0f;
+    h.params[P::rsOn] = 1.0f;
+    h.params[P::fbAmount] = 0.5f;
+    h.params[P::killFb] = 1.0f;
+    h.params[P::killTail] = 1.0f;
+    h.setSlots (SourceType::LooseJack, SourceType::None);
+    const auto in = drums (2, (int) kFs * 2, kFs);
+    const double t0 = juce::Time::getMillisecondCounterHiRes();
+    const auto out = h.run (in);
+    const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+    IFX_CHECK (allFinite (out));
+    IFX_CHECK_MSG (ms < 2000.0, "2 s of audio with Kill held took " + juce::String (ms, 0) + " ms");
+}
+
+IFX_TEST (Engine, changingPopBiasOrPolicyOnAStillContactIsSilent)
+{
+    // realism: a pop needs a contact transition; turning Pop / Circuit Bias / policy is not one
+    for (auto type : { SourceType::LooseJack, SourceType::DirtyPot })
+    {
+        Harness h (kFs, 2, 256);
+        h.params = quietParams();
+        h.params[P::jkInsert] = 1.0f;
+        h.params[P::jkWiggle] = 0.0f;
+        h.params[P::ptDirt] = 0.3f;
+        h.params[P::ptVibration] = 0.0f;
+        h.setSlots (type, SourceType::None);
+        h.runSilence ((int) (kFs * 0.5));
+        h.params[P::jkPop] = 1.0f;
+        h.params[P::tcPop] = 1.0f;
+        h.params[P::ptBias] = 1.0f;
+        h.params[P::policy] = 1.0f;
+        const auto out = h.runSilence ((int) (kFs * 0.5));
+        IFX_CHECK_MSG (peakOf (out) < 1.0e-5f, juce::String (sourceName (type)) + " popped: " + juce::String (peakOf (out)));
+    }
+}
+
+IFX_TEST (Engine, automatedGainsAreSmoothedNotStepped)
+{
+    // Output / Dry-Wet automation must ramp, not jump at block boundaries (review M5)
+    Harness h (kFs, 1, 512);
+    h.params = quietParams();
+    h.setSlots (SourceType::None, SourceType::None);
+    juce::AudioBuffer<float> dc (1, 4096);
+    dc.clear();
+    for (int i = 0; i < dc.getNumSamples(); ++i) dc.setSample (0, i, 0.5f);
+    const auto a = h.run (dc);
+    h.params[P::outTrim] = -24.0f;
+    h.params[P::mix] = 0.3f;
+    const auto b = h.run (dc);
+    float maxStep = std::abs (b.getSample (0, 0) - a.getSample (0, a.getNumSamples() - 1));
+    for (int i = 1; i < b.getNumSamples(); ++i)
+        maxStep = std::max (maxStep, std::abs (b.getSample (0, i) - b.getSample (0, i - 1)));
+    IFX_CHECK_MSG (maxStep < 0.01f, "largest sample step " + juce::String (maxStep));
+    IFX_CLOSE (b.getSample (0, b.getNumSamples() - 1), 0.5f * dbToGain (-24.0f), 1.0e-4f);
+}

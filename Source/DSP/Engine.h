@@ -76,6 +76,9 @@ public:
         ccLp[0].setCutoff (6.0, fs);
         ccLp[1].setCutoff (6.0, fs);
         scEnvCoeff = (float) std::exp (-1.0 / (0.08 * fs));
+        scFastDecay = (float) std::exp (-1.0 / (0.0208 * fs));
+        scAttack = (float) (1.0 - std::exp (-1.0 / (0.0021 * fs)));
+        ceilRel = (float) (1.0 - std::exp (-1.0 / (0.045 * fs)));
         telemetry.sampleRate.store (fs);
         telemetry.numChannels.store (numChannels);
         lastPassiveLoad = -1.0f;
@@ -244,8 +247,13 @@ public:
         const bool rawHw = prm.on (P::rawHw);
         const int excType = prm.choice (P::excType);
         const bool excEnabled = excType != 0 && (! rawHw || prm.on (P::keepExc));
-        const float excGainTarget = excEnabled ? std::min (dbToGain (prm[P::excLevel]), limit (limits::excitationPeak, policy)) : 0.0f;
-        if (excType != lastExcType) { lastExcType = excType; excPhase = 0.0; }
+        if (snapGains) excTypeActive = excType;
+        const bool excSwitching = excType != excTypeActive;
+        const float excRequested = dbToGain (prm[P::excLevel]);
+        const float excCap = limit (limits::excitationPeak, policy);
+        const float excGainTarget = excEnabled && ! excSwitching ? std::min (excRequested, excCap) : 0.0f;
+        telemetry.excitationLimited.store (excEnabled && excRequested > excCap);
+        telemetry.excitationEffectiveDb.store (gainToDb (std::min (excRequested, excCap)));
 
         const bool preOn = prm.on (P::preOn);
         const float preDrive = dbToGain (prm[P::preDrive]);
@@ -271,6 +279,7 @@ public:
         const bool link = prm.on (P::linkGesture);
         const float chaos = prm[P::chaos];
         const bool slotOn[2] = { prm.on (P::slotAOn), prm.on (P::slotBOn) };
+        const float humT = ctx.hum, buzzT = ctx.buzz, rfT = ctx.rf;
         // hidden Ghost Carrier: ring modulation of the wet path by a slowly wandering carrier
         const bool ghostOn = prm.on (P::ghostOn);
         const float ghostAmt = std::clamp (prm[P::ghostMix], 0.0f, 1.0f);
@@ -331,6 +340,25 @@ public:
         int64_t barOrigin = blockStartSample;
         oneShotStartSample = 0;
         const double samplesPerBar = samplesPerBeat * beatsPerBar;
+        const float ghostAmtT = ghostAmt;
+
+        // automated gains are smoothed per sample (no zipper, no block-size dependence); after a
+        // prepare / reset they start at their targets so identities hold from the first sample
+        if (snapGains)
+        {
+            snapGains = false;
+            dryS = dryG; wetS = wetG; outS = outTrim; studioLvlS = studioLevel; ceilS = ceiling;
+            preDriveS = preDrive; preClipS = preClip; ghostAmtS = ghostAmtT;
+            humS = humT; buzzS = buzzT; rfS = rfT;
+            curTap = prevTap = (int) monitor; tapFade = 1.0f;
+            curSrc = prevSrc = studioSrc; srcFade = 1.0f;
+            passiveMix = passiveOn ? 1.0f : 0.0f;
+            preMix = preOn ? 1.0f : 0.0f;
+            ceilMix = ceilOn ? 1.0f : 0.0f;
+        }
+        // monitor tap and Studio source changes crossfade over 10 ms (one change at a time)
+        if ((int) monitor != curTap && tapFade >= 1.0f) { prevTap = curTap; curTap = (int) monitor; tapFade = 0.0f; }
+        if (studioSrc != curSrc && srcFade >= 1.0f) { prevSrc = curSrc; curSrc = studioSrc; srcFade = 0.0f; }
 
         for (int i = 0; i < numSamples; ++i)
         {
@@ -375,6 +403,25 @@ public:
                 sendTarget = 1.0f;
             sendGain = sendTarget + (sendGain - sendTarget) * smoothCoeff;
 
+            // ---- per-sample smoothing of block targets --------------------------------
+            dryS = smoothTo (dryS, dryG, smoothCoeff);
+            wetS = smoothTo (wetS, wetG, smoothCoeff);
+            outS = smoothTo (outS, outTrim, smoothCoeff);
+            studioLvlS = smoothTo (studioLvlS, studioLevel, smoothCoeff);
+            ceilS = smoothTo (ceilS, ceiling, smoothCoeff);
+            preDriveS = smoothTo (preDriveS, preDrive, smoothCoeff);
+            preClipS = smoothTo (preClipS, preClip, smoothCoeff);
+            ghostAmtS = smoothTo (ghostAmtS, ghostAmtT, smoothCoeff);
+            humS = smoothTo (humS, humT, smoothCoeff);
+            buzzS = smoothTo (buzzS, buzzT, smoothCoeff);
+            rfS = smoothTo (rfS, rfT, smoothCoeff);
+            ctx.hum = humS; ctx.buzz = buzzS; ctx.rf = rfS;
+            tapFade = std::min (1.0f, tapFade + rampStep);
+            srcFade = std::min (1.0f, srcFade + rampStep);
+            passiveMix = rampTo (passiveMix, passiveOn ? 1.0f : 0.0f);
+            preMix = rampTo (preMix, preOn ? 1.0f : 0.0f);
+            ceilMix = rampTo (ceilMix, ceilOn ? 1.0f : 0.0f);
+
             // ---- gestures --------------------------------------------------------
             GestureOut g[2] = { gen[0].step(), gen[1].step() };
             // continuous MIDI motion (CC1) and pressure (aftertouch)
@@ -400,14 +447,26 @@ public:
             // ---- input conditioning + excitation ---------------------------------
             trim = trimTarget + (trim - trimTarget) * smoothCoeff;
             excGain = excGainTarget + (excGain - excGainTarget) * smoothCoeff;
-            const float e = excGain > 1.0e-6f ? excitation (excType) * excGain : 0.0f;
+            if (excType != excTypeActive && excGain < 1.0e-5f)
+            {
+                excTypeActive = excType; // switch waveforms only while silent
+                excPhase = 0.0;
+                excGain = 0.0f;
+            }
+            const float e = excGain > 1.0e-6f ? excitation (excTypeActive) * excGain : 0.0f;
             float x[2] = { 0.0f, 0.0f }, p[2] = { 0.0f, 0.0f };
             for (int ch = 0; ch < nch; ++ch)
             {
                 x[ch] = in != nullptr && in[ch] != nullptr ? in[ch][i] : 0.0f;
                 if (! std::isfinite (x[ch])) x[ch] = 0.0f;
                 float v = x[ch] * trim;
-                if (passiveOn) v = (float) (passive[ch].process (v) * passiveNorm);
+                if (passiveMix > 0.0f)
+                {
+                    const float pv = (float) (passive[ch].process (v) * passiveNorm);
+                    v = passiveMix >= 1.0f ? pv : v + passiveMix * (pv - v);
+                }
+                else
+                    passive[ch].reset();
                 p[ch] = v + e;
             }
             const float lvl = std::max (std::abs (p[0]), std::abs (p[nch - 1]));
@@ -465,11 +524,14 @@ public:
             }
 
             // ---- optional input-stage saturation (all three paths, ADAA) ---------
-            if (preOn)
+            if (preMix > 0.0f)
             {
                 for (int pi = 0; pi < 3; ++pi)
                     for (int ch = 0; ch < nch; ++ch)
-                        paths[pi][ch] = preClip * preSat[pi][ch].process (paths[pi][ch] * preDrive / preClip) / preDrive;
+                    {
+                        const float sat = preClipS * preSat[pi][ch].process (paths[pi][ch] * preDriveS / preClipS) / preDriveS;
+                        paths[pi][ch] = preMix >= 1.0f ? sat : paths[pi][ch] + preMix * (sat - paths[pi][ch]);
+                    }
             }
             else
                 for (auto& row : preSat) for (auto& sat : row) sat.reset();
@@ -483,11 +545,13 @@ public:
                 C[ch] = paths[2][ch];
                 D[ch] = C0[ch] - R[ch];
                 A[ch] = C[ch] - C0[ch];
-                switch (studioSrc)
+                selectStudioSource (curSrc, R[ch], C[ch], D[ch], A[ch], F[ch], U[ch]);
+                if (srcFade < 1.0f)
                 {
-                    case 0:  F[ch] = A[ch]; U[ch] = D[ch]; break;
-                    case 1:  F[ch] = D[ch]; U[ch] = A[ch]; break;
-                    default: F[ch] = C[ch] - R[ch]; U[ch] = 0.0f; break;
+                    float f0, u0;
+                    selectStudioSource (prevSrc, R[ch], C[ch], D[ch], A[ch], f0, u0);
+                    F[ch] = f0 + srcFade * (F[ch] - f0);
+                    U[ch] = u0 + srcFade * (U[ch] - u0);
                 }
             }
 
@@ -499,7 +563,7 @@ public:
                 float s[2] = { F[0] * sendGain, F[nch - 1] * sendGain };
                 studio.process (s, nch);
                 for (int ch = 0; ch < nch; ++ch)
-                    P[ch] = F[ch] + studioMix * (s[ch] * studioLevel - F[ch]);
+                    P[ch] = F[ch] + studioMix * (s[ch] * studioLvlS - F[ch]);
             }
             else
             {
@@ -516,7 +580,7 @@ public:
                 ghostLfo += 0.23 / fs;
                 ghostLfo -= std::floor (ghostLfo);
                 carrier = (float) std::sin (2.0 * kPi * ghostPhase);
-                ghostGain = ghostRamp * ghostAmt;
+                ghostGain = ghostRamp * ghostAmtS;
             }
 
             // Raw Hardware and slot-change / order declick
@@ -531,26 +595,40 @@ public:
                     w = C[ch];                               // Studio bypassed: exactly C
                 else
                     w = R[ch] + U[ch] + P[ch];
+                if (ghostGain > 0.0f)
+                    w += ghostGain * (w * carrier - w);   // hidden effect: bypassed by Raw Hardware below
                 w = w + rawMix * (C[ch] - w);
                 w *= orderFade * slotFade;
-                if (ghostGain > 0.0f)
-                    w += ghostGain * (w * carrier - w);
                 W[ch] = w;
-                y[ch] = dryG * x[ch] + wetG * W[ch];
+                y[ch] = dryS * x[ch] + wetS * W[ch];
             }
 
             // ---- taps, trim, protection ------------------------------------------
+            float pre[2] = { 0.0f, 0.0f }, peakAll = 0.0f;
             for (int ch = 0; ch < nch; ++ch)
             {
                 const float tapVals[7] = { y[ch], C[ch], A[ch], D[ch], P[ch], W[ch], x[ch] };
-                float o = tapVals[(int) monitor] * outTrim;
-                if (ceilOn)
+                float v = tapVals[curTap];
+                if (tapFade < 1.0f)
+                    v = tapVals[prevTap] + tapFade * (v - tapVals[prevTap]);
+                pre[ch] = v * outS;
+                peakAll = std::max (peakAll, std::abs (pre[ch]));
+            }
+            // Ceiling: stereo-linked gain rider, instant attack, ~45 ms release, then a clamp
+            if (ceilMix > 0.0f)
+            {
+                const float need = peakAll > ceilS ? ceilS / peakAll : 1.0f;
+                ceilGain = need < ceilGain ? need : ceilGain + (1.0f - ceilGain) * ceilRel;
+            }
+            else
+                ceilGain = 1.0f;
+            for (int ch = 0; ch < nch; ++ch)
+            {
+                float o = pre[ch];
+                if (ceilMix > 0.0f)
                 {
-                    const float a = std::abs (o);
-                    const float need = a > ceiling ? ceiling / a : 1.0f;
-                    ceilGain = need < ceilGain ? need : ceilGain + (1.0f - ceilGain) * 0.0005f;
-                    o *= ceilGain;
-                    o = std::clamp (o, -ceiling, ceiling);
+                    const float lim = std::clamp (o * ceilGain, -ceilS, ceilS);
+                    o = ceilMix >= 1.0f ? lim : o + ceilMix * (lim - o);
                 }
                 const float bTarget = bypass ? 1.0f : 0.0f;
                 if (ch == 0)
@@ -589,8 +667,8 @@ public:
                 for (int ch = 0; ch < sidechainChannels; ++ch)
                     if (sidechain[ch] != nullptr) a = std::max (a, std::abs (sidechain[ch][i]));
                 if (! std::isfinite (a)) a = 0.0f;
-                scFast = a > scFast ? a : scFast * 0.999f;
-                scEnv = a > scEnv ? scEnv + (a - scEnv) * 0.01f : scEnv * scEnvCoeff;
+                scFast = a > scFast ? a : scFast * scFastDecay;
+                scEnv = a > scEnv ? scEnv + (a - scEnv) * scAttack : scEnv * scEnvCoeff;
                 if (reactRefractory > 0) --reactRefractory;
                 if (reactAmt > 0.0f && reactRefractory == 0 && scFast > reactThr && scFast > scEnv * 1.8f)
                 {
@@ -633,12 +711,16 @@ public:
         t.sidechainPresent.store (sidechain != nullptr && sidechainChannels > 0);
         t.sidechainEnv.store (scEnv);
         t.excitationActive.store (excGain > 1.0e-6f);
-        t.tailSeconds.store ((float) studio.tailSeconds());
+        t.tailSeconds.store (studioOn ? (float) studio.tailSeconds() : 0.0f); // Studio off / Raw Hardware: no tail
+        if (studioMix > 0.0f)
+            studio.takeStagePeaks (t.stageIn, t.stageOut);
+        else
+            for (int st = 0; st < 7; ++st) { t.stageIn[st].store (0.0f); t.stageOut[st].store (0.0f); }
         t.effectiveSeed.store (seedEff);
         for (int li = 0; li < kNumLanes; ++li)
         {
             const int n = std::clamp (pattern.lanes[li].length, 1, kMaxSteps);
-            t.laneStep[li].store (clockRunning && laneActive ? (int) ((int64_t) std::floor (ppqEnd / ss.stepBeats) % n) : -1);
+            t.laneStep[li].store (clockRunning && laneActive ? (int) ((((int64_t) std::floor (ppqEnd / ss.stepBeats)) % n + n) % n) : -1);
         }
         for (int s = 0; s < 2; ++s)
         {
@@ -851,6 +933,23 @@ private:
         passiveNorm = d0; // unity DC gain: no level jump when switching circuit mode
     }
 
+    /** One-pole smoothing step that lands exactly on the target (so identities hold once settled). */
+    static float smoothTo (float v, float target, float c) noexcept
+    {
+        const float n = target + (v - target) * c;
+        return std::abs (n - target) <= 1.0e-7f * std::max (1.0f, std::abs (target)) ? target : n;
+    }
+
+    static void selectStudioSource (int src, float r, float c, float d, float a, float& f, float& u) noexcept
+    {
+        switch (src)
+        {
+            case 0:  f = a; u = d; break;       // Artifacts
+            case 1:  f = d; u = a; break;       // Breaks
+            default: f = c - r; u = 0.0f; break; // Both
+        }
+    }
+
     /** Fixed-length (10 ms) linear declick ramp: reaches its target exactly, so bypass
         identities are exact once a switch has settled. */
     float rampTo (float v, float target) const noexcept
@@ -897,6 +996,7 @@ private:
     {
         softReset (hostSeconds, reason);
         studio.reset();
+        snapGains = true;
         for (auto& b : passive) b.reset();
         for (auto& row : preSat) for (auto& s : row) s.reset();
         excPhase = 0.0;
@@ -967,6 +1067,13 @@ private:
     float trim = 1.0f, excGain = 0.0f, studioMix = 0.0f, rawMix = 0.0f, bypassMix = 0.0f, ceilGain = 1.0f;
     float slotMix[2] { 1.0f, 1.0f };
     float ghostRamp = 0.0f;
+    // smoothed block targets and switch crossfades
+    bool snapGains = true;
+    float dryS = 0.0f, wetS = 1.0f, outS = 1.0f, studioLvlS = 1.0f, ceilS = 1.0f, preDriveS = 1.0f, preClipS = 1.0f,
+          ghostAmtS = 0.0f, humS = 0.0f, buzzS = 0.0f, rfS = 0.0f;
+    int curTap = 0, prevTap = 0, curSrc = 0, prevSrc = 0, excTypeActive = 0;
+    float tapFade = 1.0f, srcFade = 1.0f, passiveMix = 0.0f, preMix = 0.0f, ceilMix = 0.0f;
+    float ceilRel = 0.0005f, scFastDecay = 0.999f, scAttack = 0.01f;
     double ghostPhase = 0.0, ghostLfo = 0.0;
     float orderFade = 1.0f, slotFade = 1.0f;
     bool orderSwitching = false, orderReturning = false, effSwap = false;
@@ -980,7 +1087,7 @@ private:
     Rng excRng;
     OnePole excLp, excPink1, excPink2;
     double excPhase = 0.0;
-    int excCounter = 0, excImpulseAge = 1 << 20, lastExcType = 0;
+    int excCounter = 0, excImpulseAge = 1 << 20;
     float excImpulse = 0.0f;
 
     // MIDI

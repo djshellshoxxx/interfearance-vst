@@ -35,6 +35,8 @@ struct EngineTelemetry
     std::atomic<bool> sidechainPresent { false };
     std::atomic<float> sidechainEnv { 0 };
     std::atomic<bool> excitationActive { false };
+    std::atomic<bool> excitationLimited { false };      // requested excitation level above the policy cap
+    std::atomic<float> excitationEffectiveDb { -120.0f }; // level actually used (after the cap)
     std::atomic<float> tailSeconds { 0 };
     std::atomic<uint64_t> effectiveSeed { 0 };
     std::atomic<uint32_t> resets { 0 };

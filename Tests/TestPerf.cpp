@@ -45,6 +45,7 @@ double nowMs() { return juce::Time::getMillisecondCounterHiRes(); }
 
 IFX_SLOW_TEST (Perf, cpuRealtimeFactorWorstCase)
 {
+    juce::ScopedNoDenormals noDenormals; // as in processBlock
     std::cout << "    CPU: " << juce::SystemStats::getCpuModel() << std::endl;
     for (double fs : { 44100.0, 48000.0, 96000.0, 192000.0 })
     {
@@ -68,6 +69,7 @@ IFX_SLOW_TEST (Perf, cpuRealtimeFactorWorstCase)
 
 IFX_SLOW_TEST (Perf, soakOneHourOfAudioNoDriftFiniteBounded)
 {
+    juce::ScopedNoDenormals noDenormals;
     const double fs = 48000.0;
     Harness h (fs, 2, 512);
     worstCase (h);
@@ -109,4 +111,38 @@ IFX_SLOW_TEST (Perf, soakOneHourOfAudioNoDriftFiniteBounded)
     const double early = std::min (segMs[0], segMs[1]);
     const double late = *std::max_element (segMs.end() - 3, segMs.end());
     IFX_CHECK_MSG (late < early * 1.6 + 500.0, "CPU drift: early " + juce::String (early) + " ms, late " + juce::String (late) + " ms");
+}
+
+IFX_SLOW_TEST (Perf, costBreakdownAt48k)
+{
+    // attribute CPU to features: each row adds one thing to the previous configuration
+    juce::ScopedNoDenormals noDenormals;
+    const double fs = 48000.0;
+    const auto chunk = drums (2, (int) fs, fs);
+    struct Row { const char* name; std::function<void (Harness&)> apply; };
+    const std::vector<Row> rows {
+        { "bypass-equivalent (empty slots, no hum)", [] (Harness& h) { h.params = quietParams(); h.setSlots (SourceType::None, SourceType::None); } },
+        { "+ Loose Jack",            [] (Harness& h) { h.setSlots (SourceType::LooseJack, SourceType::None); } },
+        { "+ Cable Handling (2 slots)", [] (Harness& h) { h.setSlots (SourceType::LooseJack, SourceType::CableHandling); } },
+        { "+ hum/buzz/rf",           [] (Harness& h) { h.params[P::hum] = 0.6f; h.params[P::buzz] = 0.3f; h.params[P::rf] = 0.2f; } },
+        { "+ passive pickup + input drive", [] (Harness& h) { h.params[P::inputMode] = 1.0f; h.params[P::preOn] = 1.0f; } },
+        { "+ Studio EQ/Contour",     [] (Harness& h) { h.params[P::studioOn] = 1.0f; h.params[P::eqOn] = 1.0f; h.params[P::ctOn] = 1.0f; } },
+        { "+ Drive/Crush",           [] (Harness& h) { h.params[P::drOn] = 1.0f; h.params[P::crOn] = 1.0f; } },
+        { "+ Resonator",             [] (Harness& h) { h.params[P::rsOn] = 1.0f; } },
+        { "+ Gate/Echo",             [] (Harness& h) { h.params[P::gtOn] = 1.0f; h.params[P::ecOn] = 1.0f; } },
+        { "+ feedback",              [] (Harness& h) { h.params[P::fbAmount] = 0.5f; } },
+        { "+ ceiling + ghost",       [] (Harness& h) { h.params[P::ceilOn] = 1.0f; h.params[P::ghostOn] = 1.0f; } },
+    };
+    Harness h (fs, 2, 256);
+    for (const auto& row : rows)
+    {
+        row.apply (h);
+        h.run (chunk); // settle
+        const double t0 = nowMs();
+        for (int s = 0; s < 5; ++s)
+            h.run (chunk);
+        const double pct = (nowMs() - t0) / 5000.0 * 100.0;
+        std::cout << "    " << juce::String (row.name).paddedRight (' ', 34) << juce::String (pct, 2) << " % of one core" << std::endl;
+    }
+    IFX_CHECK (true);
 }

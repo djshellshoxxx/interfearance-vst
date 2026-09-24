@@ -65,6 +65,7 @@ juce::String describeFormat (const RenderSettings& r)
 
 RenderResult render (const PluginState& state, RenderSettings rs, const std::atomic<bool>* cancel, std::atomic<float>* progress)
 {
+    juce::ScopedNoDenormals noDenormals; // same arithmetic as the live processBlock
     rs.sanitise();
     RenderResult res;
     const double fs = rs.sampleRate;

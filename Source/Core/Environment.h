@@ -57,15 +57,19 @@ public:
         const double p = 2.0 * 3.14159265358979 * phase;
 
         Sample s;
-        const double s1 = std::sin (p), s2 = std::sin (2 * p), s3 = std::sin (3 * p), s5 = std::sin (5 * p), s7 = std::sin (7 * p);
+        // harmonics by the Chebyshev recurrence sin(n p) = 2 cos(p) sin((n-1) p) - sin((n-2) p):
+        // two transcendental calls per sample instead of six
+        const double s1 = std::sin (p), c2 = 2.0 * std::cos (p);
+        const double s2 = c2 * s1, s3 = c2 * s2 - s1, s4 = c2 * s3 - s2, s5 = c2 * s4 - s3;
+        const double s6 = c2 * s5 - s4, s7 = c2 * s6 - s5, s8 = c2 * s7 - s6, s9 = c2 * s8 - s7;
         s.humClean = (float) ((s1 + 0.12 * s2 + 0.18 * s3 + 0.05 * s5) * 0.74);
-        s.humBright = (float) ((0.6 * s1 + 0.25 * s2 + 0.45 * s3 + 0.3 * s5 + 0.2 * s7 + 0.12 * std::sin (9 * p)) * 0.55);
+        s.humBright = (float) ((0.6 * s1 + 0.25 * s2 + 0.45 * s3 + 0.3 * s5 + 0.2 * s7 + 0.12 * s9) * 0.55);
 
         if (buzzAmount > 0.0f)
         {
             // rectified-mains shaped pulses at 2x mains (dimmer / supply buzz), softened
-            const double r = std::abs (s1);
-            s.buzz = (float) ((std::pow (r, 10.0) - 0.18) * 1.1);
+            const double r = std::abs (s1), r2 = r * r, r4 = r2 * r2, r5 = r4 * r;
+            s.buzz = (float) ((r5 * r5 - 0.18) * 1.1);
         }
 
         if (rfAmount > 0.0f)
