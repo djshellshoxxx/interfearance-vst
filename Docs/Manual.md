@@ -170,6 +170,22 @@ Factory presets are level-matched so switching them does not jump in loudness; t
 peaks. Create-mode excitation and Studio Drive/Resonator/Feedback can add level — watch the meter and use the Output
 Ceiling (an explicit, audible soft ceiling; off means no limiting). Bypass and one-slot bypass are exact.
 
+## Compatibility and host notes
+
+| | Status |
+|---|---|
+| Windows 10/11 x64, VST3 | Built and validated (pluginval, host-contract tests). DAW load still unverified; see `QA.md`. |
+| Windows x64 stand-alone | Built. |
+| macOS (VST3/AU), Linux, CLAP | Not built for 1.0. The DSP core is portable. |
+| Sample rates | 44.1, 48, 88.2, 96, 192 kHz (tested offline). |
+| Channels | Mono → mono, stereo → stereo, optional mono/stereo sidechain. |
+| CPU | x64 with SSE2. Two slots plus the full Studio chain run in real time on a typical desktop CPU (see `QA.md`). |
+
+Known host limitations:
+- Some hosts do not send MIDI to audio effects. Use the Play buttons, the Trigger A/B automation or the Gesture Lane.
+- A sidechain needs a host that exposes VST3 sidechain buses. Without one, Sidechain React shows *no sidechain*.
+- Offline bounce is deterministic when Lock is on: the same start position gives the same audio.
+
 ## Help and debug tools
 
 Help (`?` or F1) explains every feature, shows the version, licence, homepage and support address, and has
