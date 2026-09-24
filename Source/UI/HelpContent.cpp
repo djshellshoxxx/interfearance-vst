@@ -91,7 +91,9 @@ namespace
             "heard only through an enabled microphonic path.\n"
             "  Bend - where the cable is flexed. Shake Cable - continuous shaking. Damage - broken conductor strands (interrupts signal).\n"
             "  Shield Damage - broken braid (admits hum while the conductor stays live). Mic - handling noise pickup; 0 = a sealed cable is silent.\n"
-            "  Weak Spot - location of the fault; bend over it repeatedly to find the same crackle." });
+            "  Weak Spot - location of the fault; bend over it repeatedly to find the same crackle.\n"
+            "A buffered / line source (Details > Source circuit) holds the conductor at low impedance, so a broken shield picks up "
+            "about 34 dB less hum than with Passive Pickup." });
 
         s.add ({ "Dirty Pot",
             "A rotary pot on a finite track, used as a Level or Tone control.\n"
@@ -120,7 +122,9 @@ namespace
             "retuned to the song.\n"
             "Buzz Band and Buzz Source: Supply = rectifier pulses twice per mains cycle (100/120 Hz buzz). Dimmer = a light dimmer's "
             "switching spikes twice per cycle, loudest near half brightness, silent fully on or off. Dimmer Kind: Cheap Wall "
-            "switches in microseconds (harsh), Stage and TV Studio chokes are softer and darker. Interference: sparse RF-like chatter.\n"
+            "switches in microseconds (harsh), Stage and TV Studio chokes are softer and darker.\n"
+            "Interference and Transmitter: how much radio energy reaches the rig and what sends it (AM Station, keyed Two-Way Radio "
+            "bursts, or Motor Sparks). The circuit detects RF by a square law, so a little less RF is a lot less noise.\n"
             "Ground loop: Other Gear makes current flow through the cable shield; current x shield resistance is hum in series with "
             "the signal, entering before the slots. 2-prong gear leaks a small current (slightly buzzy hum); Grounded gear is driven "
             "by the ground-voltage difference set by Outlets (round hum). Cable Run and Cable Shield set the resistance. Interface: "

@@ -289,6 +289,7 @@ IFX_TEST (CableHandling, shieldFaultAdmitsHumWhileConductorLive)
     s.h.params[P::hum] = 1.0f;
     s.h.params[P::cbDamage] = 0.0f;
     s.h.params[P::cbShieldDmg] = 1.0f;
+    s.h.params[P::inputMode] = 1.0f; // a passive pickup drives the exposed conductor from a high impedance
     s.h.params[P::cbBend] = 0.5f;
     s.h.params[P::cbWeakPos] = 0.5f;
     auto in = sine (2, (int) (kFs * 2), 1000.0, kFs, 0.3f);

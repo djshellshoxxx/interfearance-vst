@@ -34,6 +34,7 @@ public:
         wiper.microDepth = 0.004f;
         jitterLp.setCutoff (3500.0, fs);
         jitterHp.setCutoff (300.0, fs);
+        switchStep = (float) (1.0 / (0.01 * fs));
         resetTone();
     }
 
@@ -54,7 +55,7 @@ public:
 
     void setParams (const ParamSnapshot& p, float disturbance) noexcept override
     {
-        policy = (Policy) p.choice (P::policy);
+        setCommon (p);
         turn = p[P::ptTurn];
         taper = p.choice (P::ptTaper);
         toneCircuit = p.choice (P::ptCircuit) == 1;
@@ -65,7 +66,6 @@ public:
         dist = disturbance;
         const auto ws = wearSettingsFor (SourceType::DirtyPot, mapSeed, p);
         wear.update (ws);
-        setBandwidth (policy);
     }
 
     const WearMap& wearMap() const noexcept { return wear; }
@@ -93,8 +93,13 @@ public:
             contact.reset();
             charge.reset();
             resetTone();
+            // taper and circuit switches crossfade; after a prepare / reset they start settled
+            for (int k = 0; k < 3; ++k) taperW[k] = k == taper ? 1.0f : 0.0f;
+            toneW = toneCircuit ? 1.0f : 0.0f;
+            toneRunning = toneCircuit;
             primed = true;
         }
+        stepSmoothing();
 
         const float target = turn + g.steer * (g.steerPos - turn);
         // a knob has no tremor of its own: only explicit vibration moves a still knob
@@ -117,7 +122,7 @@ public:
         wiperG = contact.step (in, policy);
 
         // fine resistive irregularity: exists only while the wiper travels over dirt
-        const float depth = limit (limits::scratchGain, policy) * scratch;
+        const float depth = lim (limits::scratchGain) * scratch;
         const float jitAmp = motion * W * depth;
         float jit = 0.0f;
         if (jitAmp > 0.0f)
@@ -131,15 +136,40 @@ public:
         const float staticErr = depth * W * 0.3f * (0.5f + 0.5f * wear.roughAt (q));
         modulation = std::clamp (1.0f - staticErr + jit, 0.0f, 1.5f);
 
-        nominal = taperLaw (q, taper);
-        actual = toneCircuit ? nominal : nominal * modulation * wiperG;
+        // Taper / Level-Tone switches crossfade over 10 ms between the old and new law (a real
+        // switch would click; the spec asks that switches never click unintentionally)
+        bool taperSettled = true;
+        for (int k = 0; k < 3; ++k)
+        {
+            const float t = k == std::clamp (taper, 0, 2) ? 1.0f : 0.0f;
+            taperW[k] = taperW[k] < t ? std::min (t, taperW[k] + switchStep) : std::max (t, taperW[k] - switchStep);
+            taperSettled = taperSettled && taperW[k] == t;
+        }
+        if (taperSettled)
+            nominal = taperLaw (q, taper);
+        else
+        {
+            float sum = 0.0f, law = 0.0f;
+            for (int k = 0; k < 3; ++k)
+                if (taperW[k] > 0.0f) { law += taperW[k] * taperLaw (q, k); sum += taperW[k]; }
+            nominal = sum > 0.0f ? law / sum : taperLaw (q, taper);
+        }
+        actual = nominal * modulation * wiperG;   // the Level circuit's wiper gain
+        const float toneT = toneCircuit ? 1.0f : 0.0f;
+        toneW = toneW < toneT ? std::min (toneT, toneW + switchStep) : std::max (toneT, toneW - switchStep);
 
-        const float popPeak = limit (limits::popPeak, policy);
+        const float popPeak = lim (limits::popPeak);
         biasOut = bias > 0.0f ? charge.process (nominal * modulation * wiperG, bias * popPeak, popPeak) : 0.0f;
         if (bias <= 0.0f) charge.reset();
 
-        if (toneCircuit)
+        if (toneW <= 0.0f && toneRunning)
         {
+            resetTone();                 // the Tone network is out of circuit: restart it clean
+            toneRunning = false;
+        }
+        if (toneW > 0.0f)
+        {
+            toneRunning = true;
             const double Rnom = kRpot * (double) nominal;
             const double gEff = std::max (1.0e-3, (double) (modulation * wiperG));
             const double Ract = std::min (1.0e7, Rnom / gEff);
@@ -171,18 +201,17 @@ public:
         float peakInj = 0.0f;
         for (int ch = 0; ch < numChannels; ++ch)
         {
-            if (toneCircuit)
+            const float lvl[3] = { paths[0][ch] * nominal, paths[1][ch] * actual, paths[2][ch] * actual };
+            if (toneW > 0.0f)
             {
-                paths[0][ch] = toneNom.process (ch, 0, paths[0][ch]);
-                paths[1][ch] = toneAct.process (ch, 1, paths[1][ch]);
-                paths[2][ch] = toneAct.process (ch, 2, paths[2][ch]);
+                const float tn[3] = { toneNom.process (ch, 0, paths[0][ch]), toneAct.process (ch, 1, paths[1][ch]),
+                                      toneAct.process (ch, 2, paths[2][ch]) };
+                for (int p = 0; p < 3; ++p)
+                    paths[p][ch] = toneW >= 1.0f ? tn[p] : lvl[p] + toneW * (tn[p] - lvl[p]);
             }
             else
-            {
-                paths[0][ch] *= nominal;
-                paths[1][ch] *= actual;
-                paths[2][ch] *= actual;
-            }
+                for (int p = 0; p < 3; ++p)
+                    paths[p][ch] = lvl[p];
             const float inj = injLp[ch].lp (biasOut);
             paths[2][ch] += inj;
             peakInj = std::max (peakInj, std::abs (inj));
@@ -230,7 +259,8 @@ private:
     Tone toneNom, toneAct;
     float turn = 0.75f, dirt = 0.3f, scratch = 0.5f, bias = 0, vibration = 0, dist = 1;
     int taper = 1;
-    bool toneCircuit = false;
+    bool toneCircuit = false, toneRunning = false;
+    float taperW[3] { 0.0f, 1.0f, 0.0f }, toneW = 0.0f, switchStep = 0.002f;
     float wiperG = 1, modulation = 1, nominal = 1, actual = 1, biasOut = 0;
 };
 

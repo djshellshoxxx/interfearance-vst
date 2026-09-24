@@ -232,6 +232,7 @@ public:
         env.setMainsFrequency (prm.choice (P::mains) == 1 ? 60.0f : 50.0f);
         env.setBuzz (prm[P::buzz]);
         env.setRf (prm[P::rf]);
+        env.setRfType (prm.choice (P::rfType));
         env.setBuzzType ((Environment::BuzzType) std::clamp (prm.choice (P::buzzType), 0, 1));
         env.setDimmer (prm[P::dimBright], prm.choice (P::dimKind));
         env.setPhone ((Environment::Phone) std::clamp (prm.choice (P::gsm), 0, 3));

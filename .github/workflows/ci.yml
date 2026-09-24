@@ -1,0 +1,193 @@
+# Continuous integration for Interference (master spec section 11: CI builds, tests and packages the
+# artifacts, checks licence notices, signs only with configured credentials and never fakes a signature).
+#
+# Jobs
+#   checks    (ubuntu, every push / PR): licence notices + Docs/Parameters.md is up to date with Params.h
+#   build     (windows, every push / PR): configure, build Release, run the DSP and GUI test suites,
+#             optional signing, release ZIP + SHA-256 uploaded as artifacts
+#   slow      (windows, manual "Run workflow" only): the slow suite (CPU benchmark + 1 h offline soak)
+
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      slow:
+        description: "Also run the slow tests (CPU benchmark + 1 h offline soak)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  JUCE_TAG: "8.0.8"
+
+jobs:
+  checks:
+    name: Licence notices and parameter docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Licence notices are present
+        shell: bash
+        run: |
+          set -e
+          for f in LICENSE THIRD_PARTY.md; do
+            [ -f "$f" ] || { echo "::error::$f is missing"; exit 1; }
+          done
+          for word in JUCE VST3; do
+            grep -q "$word" THIRD_PARTY.md || { echo "::error::THIRD_PARTY.md does not mention $word"; exit 1; }
+          done
+          echo "LICENSE and THIRD_PARTY.md present; THIRD_PARTY.md lists JUCE and VST3."
+
+      - name: Docs/Parameters.md matches Source/Core/Params.h
+        shell: bash
+        run: |
+          python3 tools/gen_param_doc.py
+          # the generator writes the platform's line endings; compare content only
+          git diff --ignore-cr-at-eol --exit-code -- Docs/Parameters.md || {
+            echo "::error::Docs/Parameters.md is stale: run 'python tools/gen_param_doc.py' and commit the result."
+            exit 1
+          }
+
+  build:
+    name: Windows x64 build, tests and release ZIP
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      # keep presets, options and support files written by the tests out of the runner's Documents folder
+      IFX_DATA_ROOT: ${{ github.workspace }}\ci-data
+    steps:
+      - uses: actions/checkout@v4
+
+      # JUCE is not vendored. CMake looks for ./JUCE first (and would otherwise FetchContent the same
+      # tag); a cached shallow clone of the pinned tag keeps every run on the identical sources.
+      - name: Cache JUCE ${{ env.JUCE_TAG }}
+        id: juce-cache
+        uses: actions/cache@v4
+        with:
+          path: JUCE
+          key: juce-${{ env.JUCE_TAG }}-${{ runner.os }}
+
+      - name: Fetch JUCE ${{ env.JUCE_TAG }}
+        if: steps.juce-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: git clone --depth 1 --branch $env:JUCE_TAG https://github.com/juce-framework/JUCE.git JUCE
+
+      - name: Configure (Visual Studio 2022, x64)
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build Release
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: DSP / state / render tests
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force $env:IFX_DATA_ROOT | Out-Null
+          & build\InterferenceTests_artefacts\Release\InterferenceTests.exe
+          if ($LASTEXITCODE -ne 0) { throw "InterferenceTests failed (exit $LASTEXITCODE)" }
+
+      - name: Host contract and GUI tests
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force $env:IFX_DATA_ROOT | Out-Null
+          & build\InterferenceGuiTests_artefacts\Release\InterferenceGuiTests.exe
+          if ($LASTEXITCODE -ne 0) { throw "InterferenceGuiTests failed (exit $LASTEXITCODE)" }
+
+      - name: Upload GUI snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-snapshots
+          path: build/InterferenceGuiTests_artefacts/Release/gui-snapshots/*.png
+          if-no-files-found: ignore
+
+      # Signing runs only when a certificate is configured as a repository secret. Without one the build
+      # says so and ships unsigned; it never creates or fakes a signature.
+      - name: Sign binaries (only with a configured certificate)
+        shell: pwsh
+        env:
+          SIGNING_CERT_BASE64: ${{ secrets.SIGNING_CERT_BASE64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          if (-not $env:SIGNING_CERT_BASE64) {
+            Write-Host "::notice::No SIGNING_CERT_BASE64 secret is configured: the VST3 and the stand-alone app are UNSIGNED."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "interference-signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
+          try {
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+                        Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
+            if (-not $signtool) { throw "signtool.exe not found" }
+            $art = "build\Interference_artefacts\Release"
+            $files = @(Get-ChildItem -Recurse -File -Filter *.vst3 "$art\VST3\Interference.vst3") + @(Get-Item "$art\Standalone\Interference.exe")
+            foreach ($f in $files) {
+              $signArgs = @('sign', '/f', $pfx, '/fd', 'sha256', '/tr', 'http://timestamp.digicert.com', '/td', 'sha256')
+              if ($env:SIGNING_CERT_PASSWORD) { $signArgs += @('/p', $env:SIGNING_CERT_PASSWORD) }
+              & $signtool.FullName @signArgs $f.FullName
+              if ($LASTEXITCODE -ne 0) { throw "signing failed: $($f.FullName)" }
+              & $signtool.FullName verify /pa $f.FullName
+              if ($LASTEXITCODE -ne 0) { throw "signature does not verify: $($f.FullName)" }
+            }
+          } finally {
+            Remove-Item -Force -ErrorAction SilentlyContinue $pfx
+          }
+
+      - name: Release ZIP + SHA-256
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File tools\make_release.ps1
+          if ($LASTEXITCODE -ne 0) { throw "make_release.ps1 failed (exit $LASTEXITCODE)" }
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: interference-win64
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  slow:
+    name: Slow tests (CPU benchmark + 1 h offline soak)
+    if: github.event_name == 'workflow_dispatch' && inputs.slow
+    runs-on: windows-latest
+    timeout-minutes: 240
+    env:
+      IFX_DATA_ROOT: ${{ github.workspace }}\ci-data
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache JUCE ${{ env.JUCE_TAG }}
+        id: juce-cache
+        uses: actions/cache@v4
+        with:
+          path: JUCE
+          key: juce-${{ env.JUCE_TAG }}-${{ runner.os }}
+
+      - name: Fetch JUCE ${{ env.JUCE_TAG }}
+        if: steps.juce-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: git clone --depth 1 --branch $env:JUCE_TAG https://github.com/juce-framework/JUCE.git JUCE
+
+      - name: Configure and build the test binary
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { throw "configure failed" }
+          cmake --build build --config Release --parallel --target InterferenceTests
+          if ($LASTEXITCODE -ne 0) { throw "build failed" }
+
+      - name: All tests including the slow ones
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force $env:IFX_DATA_ROOT | Out-Null
+          & build\InterferenceTests_artefacts\Release\InterferenceTests.exe --slow
+          if ($LASTEXITCODE -ne 0) { throw "InterferenceTests --slow failed (exit $LASTEXITCODE)" }

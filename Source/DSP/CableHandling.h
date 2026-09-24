@@ -29,6 +29,8 @@ public:
         modes[1].bandpass (900.0, 4.0, fs);
         modes[2].bandpass (2800.0, 2.5, fs);
         for (auto& m : modes) m.reset();
+        triboLp.reset();
+        lastTriboFc = -1.0;   // recompute the corner at the new rate
     }
 
     void reset() noexcept override
@@ -50,17 +52,17 @@ public:
 
     void setParams (const ParamSnapshot& p, float disturbance) noexcept override
     {
-        policy = (Policy) p.choice (P::policy);
+        setCommon (p);
         bend = p[P::cbBend];
         shake = p[P::cbShake] * disturbance;
         damage = p[P::cbDamage];
         shieldDamage = p[P::cbShieldDmg];
         mic = p[P::cbMic];
+        cableLoadPf = std::clamp (p[P::cableLoad], 50.0f, 5000.0f);
         intermit = p[P::cbIntermit];
         dist = disturbance;
         const auto ws = wearSettingsFor (SourceType::CableHandling, mapSeed, p);
         weak.update (ws);
-        setBandwidth (policy);
     }
 
     const WearMap& weakSpotMap() const noexcept { return weak; }
@@ -74,8 +76,10 @@ public:
             flex.reset (bend);
             conductor.reset();
             shieldC.reset();
+            triboLp.reset();
             primed = true;
         }
+        stepSmoothing();
 
         const float target = bend + g.steer * (g.steerPos - bend);
         flex.step (target, g.displacement * 0.3f * dist, shake, policy);
@@ -126,7 +130,29 @@ public:
             tapPending = 0.0f;
         }
         const float m = modes[0].process (excite * 0.9f) + modes[1].process (excite * 0.6f) + modes[2].process (excite * 0.35f);
-        mechOut = std::clamp (m * mic * 0.6f, -limit (limits::mechanicalPeak, policy), limit (limits::mechanicalPeak, policy));
+        // triboelectric part of the microphonics (research note 1.8 / 5.10): friction and impact
+        // separate charge, i.e. a current into the conductor node. Below the node's RC corner
+        // (node impedance x cable capacitance) the voltage is proportional to the node
+        // impedance: a passive source (~50 kOhm) lets it through, a buffered / line source
+        // (~1 kOhm) holds it down ~34 dB and pushes the corner far above the audio band. Like
+        // the rest of the handling path it exists only with Mic (realism spec 5: a sealed cable
+        // with Mic at zero makes no handling sound).
+        float tribo = 0.0f;
+        if (mic > 0.0f)
+        {
+            const double zNode = kPassiveNodeOhms * (double) nodeS;
+            const double fc = 1.0 / (2.0 * kPi * zNode * (double) cableLoadPf * 1.0e-12);
+            if (std::abs (fc - lastTriboFc) > 0.5)
+            {
+                triboLp.setCutoff (fc, fs);
+                lastTriboFc = fc;
+            }
+            tribo = triboLp.lp (excite) * nodeS * kTribo;
+        }
+        else
+            triboLp.reset();
+        const float mechPeak = lim (limits::mechanicalPeak);
+        mechOut = std::clamp ((m + tribo) * mic * 0.6f, -mechPeak, mechPeak);
 
         mechEnv = std::abs (mechOut) > mechEnv ? std::abs (mechOut) : mechEnv * 0.9995f;
         tele.mechActivity = mechEnv;
@@ -148,6 +174,7 @@ public:
         if (speed < 0.01f) quiet |= QuietStationary;
         if (mic <= 0.0f) quiet |= QuietMicOff;
         if (damage < 0.02f && shieldDamage < 0.02f) quiet |= QuietHealthy;
+        if (shieldDamage >= 0.02f && nodeTarget < 1.0f) quiet |= QuietLowImpedance;
         if (ctx.hum <= 0.0f && ctx.buzz <= 0.0f && ctx.rf <= 0.0f) quiet |= QuietHumOff;
         tele.quiet = quiet;
     }
@@ -156,12 +183,15 @@ public:
 
     void process (float (&paths)[3][2], int numChannels, const SampleCtx& ctx, float envScale) noexcept override
     {
-        const float humPeak = limit (limits::humPeak, ctx.policy);
+        const float humPeak = lim (limits::humPeak);
         float peakInj = 0.0f;
         for (int ch = 0; ch < numChannels; ++ch)
         {
             paths[1][ch] *= condG;
-            const float inj = injLp[ch].lp (humExposure * envScale * humPeak * envWave (ctx, 0.5f, ch) + mechOut);
+            // broken braid exposes the inner conductor, which the source drives: the node
+            // impedance scales the electric-field hum. The Mic path is an explicit transducer
+            // (realism spec 5) and does not depend on the source.
+            const float inj = injLp[ch].lp (humExposure * envScale * humPeak * envWave (ctx, 0.5f, ch, nodeS) + mechOut);
             paths[2][ch] = paths[2][ch] * condG + inj;
             peakInj = std::max (peakInj, std::abs (inj));
         }
@@ -174,6 +204,11 @@ private:
     WearMap weak;
     Rng mechRng;
     Biquad modes[3];
+    OnePole triboLp;
+    static constexpr double kPassiveNodeOhms = 50000.0; // the calibration node of Source::kBufferedNode
+    static constexpr float kTribo = 0.33f;              // charge-to-voltage scale (unmeasured, by ear)
+    float cableLoadPf = 600.0f;
+    double lastTriboFc = -1.0;
     float bend = 0.5f, shake = 0, damage = 0.2f, shieldDamage = 0.1f, mic = 0, intermit = 0.4f, dist = 1;
     float condG = 1, shieldG = 1, humExposure = 0, mechOut = 0, tapPending = 0, mechEnv = 0;
     uint32_t mechEvents = 0;

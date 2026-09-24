@@ -100,7 +100,10 @@ global Hum at zero, touching only clicks.
 ### Cable Handling
 Electrical faults (conductor and shield) driven by flexing over a weak spot, plus optional mechanical rub/taps heard
 only through an enabled microphonic path. Bend, Shake Cable, Damage (broken strands interrupt signal), Shield Damage
-(admits hum while the conductor stays live), Mic (0 = a sealed cable is silent), Weak Spot.
+(admits hum while the conductor stays live), Mic (0 = a sealed cable is silent), Weak Spot. How much hum a broken
+shield admits depends on what drives the cable. A buffered / line source (Details > Source circuit: Buffered/Line)
+holds the conductor at low impedance, about 34 dB less hum than a passive guitar pickup (Passive Pickup). *Why
+quiet?* and the Shield Damage knob say so when it applies.
 
 ### Dirty Pot
 A rotary pot on a finite track used as a Level or Tone control. Turn Knob (level/tone follow the taper even with no
@@ -141,8 +144,14 @@ floating tip) lifts the odd harmonics, so it is brighter. Hum is never retuned t
   at fully on or fully off. *Dimmer Kind* sets how fast the switch is. A **Cheap Wall** dimmer switches in
   microseconds (harsh, wide rasp). **Stage** and **TV Studio** dimmers use chokes that slow the edge (softer, darker).
 
-Like hum, buzz is heard only through exposed paths. *Interference* adds sparse RF-like chatter from a nearby
-transmitter.
+Like hum, buzz is heard only through exposed paths. *Interference* sets how much radio-frequency energy reaches the
+rig. *Transmitter* chooses what it comes from:
+- **AM Station**: a distant broadcast.
+- **Two-Way Radio**: keyed bursts.
+- **Motor Sparks**: commutator crackle from a motor.
+
+The audio circuit detects RF by a square law, so a little less RF means a lot less noise. *Transmitter* is greyed
+while Interference is 0. (A fuller description follows when the transmitter models are finished.)
 
 **Ground loop.** *Other Gear* connects another device to the rig. Current then flows through the cable shield, and
 that current times the shield's resistance becomes a hum voltage in series with the signal. The hum enters before
@@ -278,7 +287,7 @@ are smoothed over about 10 ms, so automation does not zipper. Bypass and one-slo
 | macOS (VST3/AU), Linux, CLAP | Not built for 1.0. The DSP core is portable. |
 | Sample rates | 44.1, 48, 88.2, 96, 192 kHz (tested offline). |
 | Channels | Mono → mono, stereo → stereo, optional mono/stereo sidechain. |
-| CPU | x64 with SSE2. Two slots plus the full Studio chain run in real time on a typical desktop CPU (see `QA.md`). |
+| CPU | x64 with SSE2. Measured worst case (two slots, every Studio stage and feedback on): about 12 % of one Intel i5-2520M core at 48 kHz and 39 % at 192 kHz (see `QA.md`). |
 
 Known host limitations:
 - Some hosts do not send MIDI to audio effects. Use the Play buttons, the Trigger A/B automation or the Gesture Lane.

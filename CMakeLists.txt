@@ -145,6 +145,7 @@ set(IFX_TEST_SOURCES
     Tests/TestEnvironment.cpp
     Tests/TestLimits.cpp
     Tests/TestScenarios.cpp
+    Tests/TestRf.cpp
     ${IFX_SHARED_SOURCES}
 )
 target_sources(InterferenceTests PRIVATE ${IFX_TEST_SOURCES})

@@ -93,6 +93,7 @@ enum QuietReason : uint32_t
     QuietHumOff      = 1u << 5, // environment has no hum
     QuietNotTouched  = 1u << 6,
     QuietBypassed    = 1u << 7,
+    QuietLowImpedance = 1u << 8, // "A buffered / line source holds this node down (pickup ~34 dB lower)"
 };
 
 /** Per-sample shared context. */
@@ -134,9 +135,13 @@ public:
     {
         fs = sampleRate;
         for (auto& l : injLp) l.setCutoff (9000.0, fs);
+        lastBw = -1.0f;          // re-apply the policy bandwidth at the new rate on the next block
+        smoothPrimed = false;
+        polCoeff = (float) std::exp (-1.0 / (0.03 * fs));
+        nodeCoeff = (float) std::exp (-1.0 / (0.02 * fs));
         primed = false;
     }
-    virtual void reset() noexcept { primed = false; for (auto& l : injLp) l.reset(); activityEnv = 0.0f; }
+    virtual void reset() noexcept { primed = false; smoothPrimed = false; for (auto& l : injLp) l.reset(); activityEnv = 0.0f; }
     virtual void seed (uint64_t s) noexcept = 0;
 
     /** Once per block, from the parameter snapshot. */
@@ -163,9 +168,63 @@ public:
     uint64_t mapSeed = 1;
 
 protected:
+    /** Impedance of a DRIVEN exposed node relative to the calibrated levels (research note
+        ElectricalInterference.md 1.2 / 5.13). Electric-field pickup is a current into the node,
+        so the voltage scales with the node impedance, ~20 dB per decade. The pickup levels are
+        calibrated for a high-impedance source (a passive pickup is tens of kOhm across the
+        band, ~50 kOhm); a buffered / line output (~1 kOhm, AN-003: 47 Ohm..1 kOhm) holds the
+        node down by 20 log10 (50k / 1k) = -34 dB. RF is not scaled: at radio frequencies the
+        cable capacitance, not the source, sets the node impedance. */
+    static constexpr float kBufferedNode = 0.02f;
+
+    /** Once per block, from setParams: range policy and Source Circuit targets. The limits a
+        source applies glide to a new policy over ~30 ms (no level or timbre step, no contact
+        event); after a prepare / reset they start at their targets. */
+    void setCommon (const ParamSnapshot& p) noexcept
+    {
+        policy = (Policy) p.choice (P::policy);
+        nodeTarget = p.choice (P::inputMode) == 1 ? 1.0f : kBufferedNode;
+        setBandwidth (policy);
+    }
+
     void setBandwidth (Policy p) noexcept
     {
-        const float bw = limit (limits::injectionBandwidth, p);
+        polTarget = p == Policy::Expressive ? 1.0f : 0.0f;
+        if (! smoothPrimed)
+        {
+            polMix = polTarget;
+            nodeS = nodeTarget;
+            smoothPrimed = true;
+        }
+        applyBandwidth();
+    }
+
+    /** Once per sample, at the start of control(). */
+    void stepSmoothing() noexcept
+    {
+        if (polMix != polTarget)
+        {
+            const float n = polTarget + (polMix - polTarget) * polCoeff;
+            polMix = std::abs (n - polTarget) < 1.0e-5f ? polTarget : n;
+            applyBandwidth();
+        }
+        if (nodeS != nodeTarget)
+        {
+            const float n = nodeTarget + (nodeS - nodeTarget) * nodeCoeff;
+            nodeS = std::abs (n - nodeTarget) < 1.0e-6f ? nodeTarget : n;
+        }
+    }
+
+    /** A policy-dependent limit, blended while the policy glides (exact at rest). */
+    float lim (limits::Id id) const noexcept
+    {
+        const float a = limit (id, Policy::Natural), b = limit (id, Policy::Expressive);
+        return polMix <= 0.0f ? a : (polMix >= 1.0f ? b : a + polMix * (b - a));
+    }
+
+    void applyBandwidth() noexcept
+    {
+        const float bw = lim (limits::injectionBandwidth);
         if (bw != lastBw)
         {
             lastBw = bw;
@@ -173,12 +232,14 @@ protected:
         }
     }
 
-    float envWave (const SampleCtx& c, float bright, int ch) const noexcept
+    /** Environmental waveform. `node` scales the mains-derived (hum, buzz) electric-field
+        pickup by the node impedance; RF chatter is left unscaled. */
+    float envWave (const SampleCtx& c, float bright, int ch, float node = 1.0f) const noexcept
     {
         float w = c.env.humClean * (1.0f - bright) + c.env.humBright * bright;
         if (ch == 1)
             w = w * (1.0f + 0.12f * c.stereo) + 0.06f * c.stereo * (c.env.humBright - c.env.humClean);
-        return c.hum * w + c.buzz * c.env.buzz * 0.8f + c.rf * c.env.rf * 0.7f;
+        return node * (c.hum * w + c.buzz * c.env.buzz * 0.8f) + c.rf * c.env.rf * 0.7f;
     }
 
     void trackActivity (float inj) noexcept
@@ -200,6 +261,10 @@ protected:
     float lastBw = -1.0f;
     float activityEnv = 0.0f;
     Policy policy = Policy::Natural;
+    // per-sample smoothing of the policy limits and of the Source Circuit node impedance
+    bool smoothPrimed = false;
+    float polMix = 0.0f, polTarget = 0.0f, polCoeff = 0.999f;
+    float nodeS = 1.0f, nodeTarget = 1.0f, nodeCoeff = 0.999f;
 };
 
 } // namespace ifx

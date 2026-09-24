@@ -48,6 +48,11 @@ the plug-in.
 
 Presets contain no paths, device names or audio. Nothing is written during ordinary processing.
 
+**Moving the data folder (portable use, tests).** If the environment variable `IFX_DATA_ROOT` is set to an absolute
+folder, presets go to `<IFX_DATA_ROOT>/Presets` and support files to `<IFX_DATA_ROOT>/Support`, and the options move to
+`<IFX_DATA_ROOT>/Options/Interference.settings`, instead of the locations above. The test suites and CI use this so
+they never touch your Documents folder.
+
 ## Troubleshooting
 
 **The plug-in does not appear in the DAW**
@@ -68,3 +73,8 @@ Open *Help → Debug…*, tick **Create log file on crash**, then reproduce the 
 `.log` file, a troubleshooting file (*Export troubleshooting file*) and a description of what you were doing to
 support. If the plug-in keeps misbehaving, **Reset all settings to default (hard reset)** clears MIDI mappings, A/B
 and options and deletes the options file. Presets and audio are kept.
+
+The log catches access violations and other unhandled exceptions, and aborts. It chains to the host's own handlers,
+so the host still sees the crash. Some crashes cannot be logged. Fast-fail terminations (security-check failures,
+heap corruption detected by Windows) end the process before any handler runs, and some hosts catch plug-in crashes
+themselves. Then the log simply stops at the last recorded event: send it anyway.

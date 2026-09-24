@@ -44,3 +44,9 @@ Wubforge document and is used only for its general interaction grammar (overlays
   and support files are user data and are kept.
 - Research notes use abstracts only (no full-text access in an unattended run); stated per paper in Docs/Research.md.
 - No installer: the repo has no trustworthy installer pipeline, so the release is a documented ZIP (spec 12).
+- Source impedance: only nodes the source drives (a broken cable shield's inner conductor) are held ~34 dB down by a
+  Buffered/Line source; the touched tip is a floating node whose impedance is Circuit Exposure, so Touch is unscaled.
+- theme.md 80 ms value animation (V13) is not implemented for 1.0: attachments and host automation set values
+  directly, and animating the drawn position would misrepresent the automated value; slider ticks (V8) are drawn.
+- Agents: three helper agents (research, audit, review) worked on disjoint files; only the main session builds
+  (4 GB RAM machine). Their reports live in Docs/research/.

@@ -241,7 +241,7 @@ IFX_TEST (Limits, injectedArtifactsAreBandLimitedByThePolicy)
         h.params[P::jkShort] = 0.0f;
         h.params[P::monitor] = (float) (int) Tap::Artifacts;
         h.setSlots (SourceType::LooseJack, SourceType::None);
-        const auto out = h.runSilence ((int) fs);
+        const auto out = h.runSilence ((int) (fs * 3.0));   // keyed traffic: long enough to catch transmissions
         const double lf = bandEnergy (out, fs, 500.0, 2000.0);
         const double hf = bandEnergy (out, fs, 16000.0, 24000.0);
         IFX_CHECK (allFinite (out));

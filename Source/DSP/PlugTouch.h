@@ -42,7 +42,7 @@ public:
 
     void setParams (const ParamSnapshot& p, float disturbance) noexcept override
     {
-        policy = (Policy) p.choice (P::policy);
+        setCommon (p);
         touch = p[P::tcTouch];
         pressure = p[P::tcPressure];
         body = p[P::tcBody];
@@ -50,7 +50,6 @@ public:
         exposureParam = p[P::tcExposure];
         popAmount = p[P::tcPop];
         dist = disturbance;
-        setBandwidth (policy);
     }
 
     float basePosition() const noexcept override { return touch; }
@@ -64,6 +63,7 @@ public:
             charge.reset();
             primed = true;
         }
+        stepSmoothing();
 
         const float target = std::clamp (touch + g.pressure * dist, 0.0f, 1.0f);
         const bool touching = target > 0.02f || finger.q > 0.02f;
@@ -90,9 +90,11 @@ public:
         const float ambient = 0.12f;
         fingerCoupling = contactG * std::sqrt (area);
         coupling = exposure * (ambient + (1.0f - ambient) * fingerCoupling);
-        load = contactG * area * exposureParam; // finger to ground loads a high-Z source
+        // finger to ground loads a high-Z source; a buffered / line source barely notices it
+        load = contactG * area * exposureParam; // the floating tip's node impedance is Circuit Exposure, not the source
         brightness = std::clamp (0.25f + 0.75f * body * (0.4f + 0.6f * fingerCoupling), 0.0f, 1.0f);
-        popValue = charge.process (contactG, popAmount * 0.6f * limit (limits::popPeak, policy), limit (limits::popPeak, policy));
+        const float popPeak = lim (limits::popPeak);
+        popValue = charge.process (contactG, popAmount * 0.6f * popPeak, popPeak);
 
         tele.position = area;
         tele.secondary = 0.5f + finger.v * 0.1f;
@@ -119,7 +121,7 @@ public:
 
     void process (float (&paths)[3][2], int numChannels, const SampleCtx& ctx, float envScale) noexcept override
     {
-        const float humPeak = limit (limits::humPeak, ctx.policy);
+        const float humPeak = lim (limits::humPeak);
         const float loadGain = 1.0f - 0.25f * load;
         const bool loaded = load > 1.0e-4f;
         if (loaded)
@@ -139,7 +141,8 @@ public:
                 else
                     lp.reset (paths[p][ch]); // untouched: exact identity, filter tracks the signal
             }
-            const float inj = injLp[ch].lp (coupling * envScale * humPeak * envWave (ctx, brightness, ch)) + popValue;
+            // the touched tip is driven by the source: its impedance sets the mains pickup
+            const float inj = injLp[ch].lp (coupling * envScale * humPeak * envWave (ctx, brightness, ch, 1.0f)) + popValue;
             paths[2][ch] += inj;
             peakInj = std::max (peakInj, std::abs (inj));
         }

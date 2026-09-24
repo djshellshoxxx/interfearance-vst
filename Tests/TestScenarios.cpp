@@ -1032,7 +1032,9 @@ IFX_TEST (Scenarios, sourceImpedanceScalesOnlyDrivenNodeMainsPickup)
         const double ratio = level[0] / std::max (1.0e-12, level[1]);   // Buffered / Passive
         const juce::String name = c == TouchHum ? "touched tip" : (c == ShieldHum ? "broken shield" : (c == OpenJackHum ? "open jack" : "touch RF"));
         IFX_CHECK_MSG (level[1] > 1.0e-4, name + ": no pickup with a passive source");
-        if (c == TouchHum || c == ShieldHum)
+        // decision: the touched tip is a floating node (its impedance is Circuit Exposure), so only the
+        // driven conductor behind a broken shield is held down by a buffered source
+        if (c == ShieldHum)
             IFX_CHECK_MSG (ratio > 0.01 && ratio < 0.04, name + ": buffered / passive " + juce::String (ratio, 4) + " (expected ~0.02)");
         else
             IFX_CHECK_MSG (std::abs (ratio - 1.0) < 1.0e-3, name + ": should not depend on the source, ratio " + juce::String (ratio, 5));

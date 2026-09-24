@@ -37,7 +37,7 @@ X(inTrim,      "intrim",      "Input Trim",        F, -24, 12, 0, 0, "dB", "", "
 X(mains,       "mains",       "Mains",             C, 0, 1, 0, 0, "", "50 Hz|60 Hz", "Local mains frequency for all hum pickup.") \
 X(hum,         "hum",         "Hum",               F, 0, 1, 0.15f, 0, "%", "", "Strength of the mains field around the rig. Only exposed or unshielded paths pick it up.") \
 X(buzz,        "buzz",        "Buzz Band",         F, 0, 1, 0, 0, "%", "", "Optional low supply/dimmer buzz in the environment (off by default).") \
-X(rf,          "rf",          "Interference",      F, 0, 1, 0, 0, "%", "", "Optional sparse RF-like chatter from a nearby transmitter. A separate environmental source, not a property of touch.") \
+X(rf,          "rf",          "Interference",      F, 0, 1, 0, 0, "%", "", "RF field strength from a nearby transmitter (see Transmitter), detected by the audio circuit with a square law: -10 dB of RF is -20 dB of noise. A separate environmental source, not a property of touch.") \
 X(stereo,      "stereo",      "Stereo Difference", F, 0, 1, 0.2f, 0, "%", "", "Small electrical differences between channels. Mechanical contact state is always shared.") \
 X(chaos,       "chaos",       "Chaos",             F, 0, 1, 0.2f, 0, "%", "", "Variability of gesture shape within physical limits. Never changes physical laws.") \
 X(humanize,    "humanize",    "Humanize",          F, 0, 1, 0.1f, 0, "%", "", "Seeded offset of gesture starts within a fraction of a step.") \
@@ -174,7 +174,8 @@ X(buzzType,    "buzz_type",   "Buzz Source",       C, 0, 1, 0, 0, "", "Supply|Di
 X(dimBright,   "dim_bright",  "Dimmer",            F, 0, 1, 0.5f, 0, "%", "", "Light dimmer brightness. The buzz is loudest near half brightness and disappears at fully on or off. Stays locked to the mains.") \
 X(dimKind,     "dim_kind",    "Dimmer Kind",       C, 0, 2, 0, 0, "", "Cheap Wall|Stage|TV Studio", "Switching rise time: cheap wall dimmers switch in microseconds (harsh); stage and studio dimmers use chokes (softer, darker).") \
 X(gsm,         "gsm",         "2G Phone",          C, 0, 3, 0, 0, "", "Away|Check-in|Incoming|In Call", "A 2G (GSM) phone near the rig: its 217 Hz TDMA bursts are detected by the audio circuit. The rhythm is physical; the state decides when bursts happen.") \
-X(gsmDist,     "gsm_dist",    "Phone Distance",    F, 0.1f, 2, 0.5f, 1, "m", "", "Distance of the phone from the gear. Detected interference falls steeply with distance.")
+X(gsmDist,     "gsm_dist",    "Phone Distance",    F, 0.1f, 2, 0.5f, 1, "m", "", "Distance of the phone from the gear. Detected interference falls steeply with distance.") \
+X(rfType,      "rf_type",     "Transmitter",       C, 0, 2, 1, 0, "", "AM Station|Two-Way Radio|Motor Sparks", "What the Interference amount picks up: a distant AM station, keyed two-way radio bursts, or commutator sparks from a motor. Detected by the audio circuit (square law), so a little less RF is a lot less noise.")
 
 enum P : int
 {

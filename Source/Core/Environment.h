@@ -47,12 +47,13 @@ public:
         float humClean = 0.0f;  // line-voltage shaped pickup (round hum), peak ~1
         float humBright = 0.0f; // capacitive / leakage pickup, odd harmonics weighted by n, peak ~1
         float buzz = 0.0f;      // Buzz Band: supply (2x mains pulses) or dimmer (firing spikes), peak ~1
-        float rf = 0.0f;        // sparse RF-like demodulated chatter (peak ~1), zero when rf amount is 0
+        float rf = 0.0f;        // square-law detected transmitter (peak ~1) x field strength; zero when rf amount is 0
         float gsm = 0.0f;       // 2G phone burst interference (peak ~1), zero when the phone is away
     };
 
     enum class BuzzType { Supply = 0, Dimmer = 1 };
     enum class Phone { Away = 0, CheckIn, Incoming, InCall };
+    enum class RfType { AmStation = 0, TwoWay = 1, Motor = 2 };
 
     void prepare (double sampleRate) noexcept
     {
@@ -64,6 +65,7 @@ public:
         gsmHp = std::exp (-2.0 * kPiD * 100.0 / fs);
         gsmLp = 1.0 - std::exp (-2.0 * kPiD * 4000.0 / fs);
         gsmDrift = 1.0 - std::exp (-1.0 / (0.8 * fs));
+        prepareRf();
         reset (0.0);
     }
 
@@ -78,10 +80,9 @@ public:
         freq = targetFreq;
         const double cycles = hostSeconds * freq;
         phase = cycles - std::floor (cycles);
-        burstOn = false;
-        burstCounter = 0;
-        rfLp1 = rfLp2 = rfAm = 0.0;
-        rfAmTarget = 0.0;
+        resetRf();
+        rfSnap = true;          // the next setRf / setRfType start settled (seek == fresh start)
+        rfTypeSnap = true;
         dimI = dimPrevI = 0.0;
         dimBlep.reset();
         prevTheta = -1.0;
@@ -98,7 +99,34 @@ public:
 
     void setMainsFrequency (float hz) noexcept { targetFreq = hz; }
     void setBuzz (float amount) noexcept { buzzAmount = amount; }
-    void setRf (float amount) noexcept { rfAmount = amount; }
+    /** Interference amount = RF field strength at the gear, linear 0..1 (RF level 20 log10 a dB).
+        `rf` is the detected waveform for a unit field times the (smoothed) field; Source::envWave
+        multiplies by the amount once more, so the injected level follows the square law:
+        -10 dB of RF is -20 dB of noise (Jim Brown, "RFI in Audio Systems"). */
+    void setRf (float amount) noexcept
+    {
+        rfAmount = std::clamp (amount, 0.0f, 1.0f);
+        if (rfSnap)
+        {
+            rfA = rfAmount;
+            rfSnap = false;
+        }
+    }
+    /** 0 = AM station, 1 = two-way radio (default), 2 = motor sparks. A change fades the
+        detected output out and back in over 10 ms. */
+    void setRfType (int type) noexcept
+    {
+        rfTypeReq = std::clamp (type, 0, 2);
+        if (rfTypeSnap)
+        {
+            if (rfTypeReq != rfTypeActive)
+                activateRfType (rfTypeReq);
+            rfTypeGain = 1.0;
+            rfTypeSnap = false;
+        }
+    }
+    /** Motor sparks generated since the last reset (test / telemetry). */
+    uint64_t rfSparkCount() const noexcept { return sparkCount; }
     void setBuzzType (BuzzType t) noexcept { buzzType = t; }
     /** brightness 0..1 (0 = dark, never fires), kind 0 = cheap wall (5 us rise), 1 = stage choke
         (350 us), 2 = TV-studio choke (800 us). */
@@ -164,25 +192,7 @@ public:
         else
             prevTheta = -1.0;
 
-        if (rfAmount > 0.0f)
-        {
-            if (--burstCounter <= 0)
-            {
-                burstOn = ! burstOn && rng.uniform() < 0.35 + 0.6 * rfAmount;
-                burstCounter = (int) (fs * (burstOn ? rng.range (0.03, 0.25) : rng.range (0.15, 1.6) * (1.2 - rfAmount)));
-                burstCounter = std::max (1, burstCounter);
-            }
-            if (burstOn && rng.uniform() < 0.004)
-                rfAmTarget = rng.uniform();
-            const double target = burstOn ? rfAmTarget : 0.0;
-            rfAm += (target - rfAm) * amC;
-            const double n = rng.bipolar();
-            rfLp1 += (n - rfLp1) * lpC;
-            rfLp2 += (rfLp1 - rfLp2) * lpC;
-            s.rf = (float) std::clamp ((rfLp1 - rfLp2) * 5.0 * rfAm, -1.0, 1.0);
-        }
-        else
-            rfAm = 0.0;
+        s.rf = rfAmount > 0.0f || rfA > 0.0 ? (float) rfStep() : 0.0f;
 
         if (phone != Phone::Away || gsmRunning)
         {
@@ -325,15 +335,247 @@ private:
 
     static double frameHzRate() noexcept { return 5200.0 / 24.0; } // frames per second
 
+    //==========================================================================
+    // RF interference (Docs/research/ElectricalInterference.md 1.5, 5.7). A junction in the audio
+    // circuit is a square-law detector: the audio it produces is k * e(t)^2, where e(t) is the
+    // envelope of the RF reaching it, followed by the stage's own DC coupling and band limit.
+    // The three transmitters differ only in e(t). All randomness comes from `rng`.
+
+    /** Minimal TPT state-variable band-pass (unity peak gain) for the synthetic AM programme. */
+    struct Svf
+    {
+        double ic1 = 0.0, ic2 = 0.0;
+        double process (double x, double f, double q, double sr) noexcept
+        {
+            const double g = std::tan (kPiD * std::min (f, sr * 0.45) / sr), k = 1.0 / q;
+            const double a1 = 1.0 / (1.0 + g * (g + k)), a2 = g * a1, a3 = g * a2;
+            const double v3 = x - ic2;
+            const double v1 = a1 * ic1 + a2 * v3;
+            const double v2 = ic2 + a2 * ic1 + a3 * v3;
+            ic1 = 2.0 * v1 - ic1;
+            ic2 = 2.0 * v2 - ic2;
+            return k * v1;
+        }
+        void reset() noexcept { ic1 = ic2 = 0.0; }
+    };
+
+    void prepareRf() noexcept
+    {
+        lpC = 1.0 - std::exp (-2.0 * kPiD * 2500.0 / fs);   // two-way chatter band (as before)
+        amC = 1.0 - std::exp (-2.0 * kPiD * 6.0 / fs);      // two-way strength wander (as before)
+        rfSmooth = 1.0 - std::exp (-1.0 / (0.02 * fs));     // field strength glide
+        rfFadeStep = 1.0 / (0.01 * fs);                      // transmitter switch fade
+        keyStep = 1.0 / (0.002 * fs);                        // PTT key rise / fall
+        rfDcR = std::exp (-2.0 * kPiD * 20.0 / fs);          // DC coupling of the detecting stage
+        noiseScale = std::sqrt (fs / 48000.0);               // white-noise density independent of the rate
+        fadeC = 1.0 - std::exp (-1.0 / (0.6 * fs));          // AM carrier fading
+        glideC = 1.0 - std::exp (-1.0 / (0.025 * fs));       // formant glides
+        sparkDecay = std::exp (-2.0 / (kSparkTau * fs));     // squared spark envelope decays at 2 / tau
+        motorRateC = 1.0 - std::exp (-1.0 / (0.3 * fs));
+        setRxCutoff (rfTypeActive);
+    }
+
+    void setRxCutoff (int type) noexcept
+    {
+        static const double rx[3] = { 4500.0, 3000.0, 7000.0 }; // AM programme, voice radio, spark crackle
+        rxC = 1.0 - std::exp (-2.0 * kPiD * std::min (rx[std::clamp (type, 0, 2)], fs * 0.45) / fs);
+    }
+
+    void resetRf() noexcept
+    {
+        rfDcX1 = rfDcY1 = rfRx1 = rfRx2 = 0.0;
+        // two-way
+        burstOn = false;
+        burstCounter = 0;
+        rfLp1 = rfLp2 = rfAm = 0.0;
+        rfAmTarget = 0.0;
+        keyLevel = 0.0;
+        // AM station
+        f1.reset();
+        f2.reset();
+        amG = amGTarget = 0.8;
+        fadeCounter = 0;
+        sylLeft = 0;
+        sylPos = sylLen = 0;
+        sylAmp = 0.0;
+        pauseLeft = 0;
+        f1Hz = f1Target = 500.0;
+        f2Hz = f2Target = 1500.0;
+        speaker = 1.0;
+        // motor
+        sparkE2 = 0.0;
+        motorRate = motorRateTarget = 150.0;
+        motorCounter = 0;
+        sparkCount = 0;
+    }
+
+    void activateRfType (int type) noexcept
+    {
+        const uint64_t sparks = sparkCount;
+        rfTypeActive = type;
+        resetRf();
+        sparkCount = sparks;
+        setRxCutoff (type);
+    }
+
+    /** One sample of rf: unit-field detected waveform times the smoothed field strength. */
+    double rfStep() noexcept
+    {
+        rfA += ((double) rfAmount - rfA) * rfSmooth;
+        if (rfAmount <= 0.0f && rfA < 1.0e-6)
+        {
+            rfA = 0.0;                   // fully faded out: stop and restart clean next time
+            resetRf();
+            return 0.0;
+        }
+        // transmitter switch: fade out, switch while silent, fade back in
+        if (rfTypeReq != rfTypeActive)
+        {
+            rfTypeGain -= rfFadeStep;
+            if (rfTypeGain <= 0.0)
+            {
+                rfTypeGain = 0.0;
+                activateRfType (rfTypeReq);
+            }
+        }
+        else if (rfTypeGain < 1.0)
+            rfTypeGain = std::min (1.0, rfTypeGain + rfFadeStep);
+
+        double d = 0.0, gain = 1.0;          // detected signal for a unit field, output normalisation
+        switch (rfTypeActive)
+        {
+            case 0:  { const double e = amStationEnvelope(); d = e * e; gain = 0.5; break; }   // square law
+            case 2:  { d = motorDetected(); gain = 2.0; break; }                                // spark energy
+            default: { const double e = twoWayEnvelope(); d = e * e; gain = 0.7; break; }      // square law
+        }
+        // DC coupling of the detecting stage, then its band limit (two poles)
+        const double hp = d - rfDcX1 + rfDcR * rfDcY1;
+        rfDcX1 = d;
+        rfDcY1 = std::abs (hp) < 1.0e-20 ? 0.0 : hp;
+        rfRx1 += (rfDcY1 - rfRx1) * rxC;
+        rfRx2 += (rfRx1 - rfRx2) * rxC;
+        return rfA * rfTypeGain * std::clamp (rfRx2 * gain, -1.0, 1.0);
+    }
+
+    /** Keyed two-way traffic: short transmissions (30..250 ms) with gaps of 0.12..1.3 s; the
+        traffic does not depend on the field strength. While keyed, the carrier is modulated by
+        band-limited chatter; key up / down become thumps after the DC coupling. */
+    double twoWayEnvelope() noexcept
+    {
+        if (--burstCounter <= 0)
+        {
+            if (burstOn)
+                burstOn = false;
+            else
+            {
+                burstOn = rng.uniform() < 0.85;
+                if (burstOn) rfAmTarget = rng.range (0.4, 1.0);
+            }
+            burstCounter = std::max (1, (int) (fs * (burstOn ? rng.range (0.03, 0.25) : rng.range (0.12, 1.3))));
+        }
+        if (burstOn && rng.uniform() < 190.0 / fs)
+            rfAmTarget = rng.range (0.4, 1.0);
+        rfAm += (rfAmTarget - rfAm) * amC;
+        keyLevel = burstOn ? std::min (1.0, keyLevel + keyStep) : std::max (0.0, keyLevel - keyStep);
+        const double n = rng.bipolar() * noiseScale;
+        rfLp1 += (n - rfLp1) * lpC;
+        rfLp2 += (rfLp1 - rfLp2) * lpC;
+        const double x = (rfLp1 - rfLp2) * 2.5;
+        return std::max (0.0, keyLevel * rfAm * (1.0 + 0.6 * x));
+    }
+
+    /** A distant AM station: continuous carrier with slow fading, modulated by a SYNTHETIC,
+        unintelligible programme: whispered (noise-excited) two-formant syllables at 2.5..7 Hz in
+        phrases of 3..9 with short pauses. No pitch pulses, so no tonal line in the audio. */
+    double amStationEnvelope() noexcept
+    {
+        if (--fadeCounter <= 0)
+        {
+            amGTarget = rng.range (0.55, 1.0);
+            fadeCounter = std::max (1, (int) (fs * rng.range (1.0, 4.0)));
+        }
+        amG += (amGTarget - amG) * fadeC;
+
+        double env = 0.0;
+        if (pauseLeft > 0)
+            --pauseLeft;
+        else
+        {
+            if (sylPos >= sylLen)
+            {
+                if (sylLeft <= 0)
+                {
+                    sylLeft = 3 + (int) (rng.uniform() * 7.0);          // a new phrase
+                    speaker = rng.range (0.9, 1.15);
+                }
+                --sylLeft;
+                static const double vowels[8][2] = { { 730, 1090 }, { 270, 2290 }, { 530, 1840 }, { 660, 1720 },
+                                                     { 300, 870 },  { 570, 840 },  { 440, 1020 }, { 490, 1350 } };
+                const int v = std::min (7, (int) (rng.uniform() * 8.0));
+                f1Target = vowels[v][0] * speaker;
+                f2Target = vowels[v][1] * speaker;
+                sylLen = std::max (1, (int) (fs / rng.range (2.5, 7.0)));
+                sylAmp = rng.range (0.5, 1.0);
+                sylPos = 0;
+            }
+            const double t = (double) sylPos / (double) sylLen;
+            const double sn = std::sin (kPiD * t);
+            env = sylAmp * sn * sn;
+            if (++sylPos >= sylLen && sylLeft <= 0)
+                pauseLeft = std::max (1, (int) (fs * rng.range (0.15, 0.6)));
+        }
+        f1Hz += (f1Target - f1Hz) * glideC;
+        f2Hz += (f2Target - f2Hz) * glideC;
+        const double n = rng.bipolar() * noiseScale;
+        const double voice = f1.process (n, f1Hz, 5.0, fs) + 0.7 * f2.process (n, f2Hz, 7.0, fs);
+        const double prog = std::clamp (5.0 * env * voice, -1.5, 1.5);
+        return std::max (0.0, amG * (1.0 + 0.8 * prog));
+    }
+
+    /** Brush-motor commutation sparks: Poisson impulses at 60..250 per second (the rate wanders
+        with the motor's load). Each spark is a short broadband RF burst whose envelope decays in
+        kSparkTau; its detected energy A^2 tau / 2 is added directly (sample-rate independent). */
+    double motorDetected() noexcept
+    {
+        if (--motorCounter <= 0)
+        {
+            motorRateTarget = rng.range (60.0, 250.0);
+            motorCounter = std::max (1, (int) (fs * rng.range (0.5, 2.0)));
+        }
+        motorRate += (motorRateTarget - motorRate) * motorRateC;
+        sparkE2 *= sparkDecay;
+        if (rng.uniform() < motorRate / fs)
+        {
+            const double a = std::min (1.6, 0.6 * std::exp (0.4 * rng.gaussian()));
+            sparkE2 += a * a * kSparkTau * 0.5 * fs * (1.0 - sparkDecay);
+            ++sparkCount;
+        }
+        return sparkE2;
+    }
+
+    static constexpr double kSparkTau = 50.0e-6;
+
     double fs = 48000.0, glide = 0.99, phase = 0.0;
     double freq = 50.0, targetFreq = 50.0;
     float buzzAmount = 0.0f, rfAmount = 0.0f;
+    // RF
+    double rfA = 0.0, rfSmooth = 0.001, rfTypeGain = 1.0, rfFadeStep = 0.002, keyStep = 0.01, keyLevel = 0.0;
+    double rfDcR = 0.997, rfDcX1 = 0.0, rfDcY1 = 0.0, rxC = 0.3, rfRx1 = 0.0, rfRx2 = 0.0, noiseScale = 1.0;
+    int rfTypeReq = 1, rfTypeActive = 1;
+    bool rfSnap = true, rfTypeSnap = true;
+    Svf f1, f2;
+    double amG = 0.8, amGTarget = 0.8, fadeC = 0.0001, glideC = 0.001, f1Hz = 500.0, f2Hz = 1500.0, f1Target = 500.0,
+           f2Target = 1500.0, speaker = 1.0, sylAmp = 0.0;
+    int fadeCounter = 0, sylLeft = 0, sylPos = 0, sylLen = 0, pauseLeft = 0;
+    double sparkE2 = 0.0, sparkDecay = 0.4, motorRate = 150.0, motorRateTarget = 150.0, motorRateC = 0.0001;
+    int motorCounter = 0;
+    uint64_t sparkCount = 0;
     BuzzType buzzType = BuzzType::Supply;
     Phone phone = Phone::Away;
     Rng rng, gsmRng;
     bool burstOn = false;
     int burstCounter = 0;
-    double rfLp1 = 0, rfLp2 = 0, rfAm = 0, rfAmTarget = 0, lpC = 0.3, amC = 0.001;
+    double rfLp1 = 0, rfLp2 = 0, rfAm = 0, rfAmTarget = 0, lpC = 0.3, amC = 0.001; // two-way
 
     // dimmer
     double dimAlpha = kPiD * 0.5, alphaHalf = kPiD, dimK = 1.0, dimI = 0.0, dimPrevI = 0.0, prevTheta = -1.0;

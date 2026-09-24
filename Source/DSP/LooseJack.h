@@ -43,7 +43,7 @@ public:
 
     void setParams (const ParamSnapshot& p, float disturbance) noexcept override
     {
-        policy = (Policy) p.choice (P::policy);
+        setCommon (p);
         insert = p[P::jkInsert];
         wiggle = p[P::jkWiggle] * disturbance;
         pressure = p[P::jkPressure];
@@ -54,7 +54,6 @@ public:
         shield = p[P::jkShield];
         const auto ws = wearSettingsFor (SourceType::LooseJack, mapSeed, p);
         wear.update (ws);
-        setBandwidth (policy);
     }
 
     const WearMap& wearMap() const noexcept { return wear; }
@@ -75,6 +74,7 @@ public:
             charge.reset();
             primed = true;
         }
+        stepSmoothing();
 
         const float axialTarget = insert + g.steer * (g.steerPos - insert);
         axial.step (axialTarget, 0.02f * g.tapImpulse, 0.0f, policy);
@@ -109,7 +109,8 @@ public:
         const float groundedShare = shortProb * z * 0.8f;
         exposure = shorted ? 0.0f : (1.0f - tipG) * (0.45f + 0.55f * (1.0f - sleeveG)) * (1.0f - 0.95f * shield) * (1.0f - groundedShare);
         bright = 1.0f - sleeveG;
-        popValue = charge.process (tipG * sleeveG, popAmount * limit (limits::popPeak, policy), limit (limits::popPeak, policy));
+        const float popPeak = lim (limits::popPeak);
+        popValue = charge.process (tipG * sleeveG, popAmount * popPeak, popPeak);
 
         tele.position = q;
         tele.secondary = lateral.q;
@@ -138,7 +139,9 @@ public:
 
     void process (float (&paths)[3][2], int numChannels, const SampleCtx& ctx, float envScale) noexcept override
     {
-        const float humPeak = limit (limits::humPeak, ctx.policy);
+        // an open tip is disconnected from the source: the floating input's pickup depends on
+        // the receiver and its shielding, not on Source Circuit (no node-impedance scaling)
+        const float humPeak = lim (limits::humPeak);
         float peakInj = 0.0f;
         for (int ch = 0; ch < numChannels; ++ch)
         {

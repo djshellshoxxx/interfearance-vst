@@ -31,11 +31,13 @@ First release.
   Dry Input), linear / constant-power mix, optional output ceiling, meters.
 - Offline WAV render (bars or seconds; 16/24/32-bit float; 44.1/48/96 kHz; mono/stereo; tail; normalize) and
   live record.
-- 22 factory presets in 6 categories; user presets with modified marker and A/B compare.
+- 27 factory presets in 7 categories; user presets with modified marker and A/B compare.
 - MIDI map and MIDI learn; in-plugin help, tooltips, keyboard navigation.
 - Zero latency; mono and stereo; 44.1–192 kHz.
 - Help > Debug: live data window with misconfiguration checks, opt-in crash log, troubleshooting-file export and hard
   reset.
+- Environment: coupling-aware mains hum, ground loop (other gear, outlets, cable run, shield, interface), supply or
+  light-dimmer buzz, 2G phone bursts; researched in `Docs/research/ElectricalInterference.md`.
 - One hidden extra for the curious.
 
 ### Release notes 1.0.0
