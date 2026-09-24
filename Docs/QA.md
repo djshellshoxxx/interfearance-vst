@@ -56,9 +56,9 @@ CI does not run pluginval or load the plug-in in a DAW: those remain local relea
 
 | Suite | Binary | Tests | Result |
 |---|---|---|---|
-| Core, sources (Loose Jack, Plug Touch, Cable Handling, Dirty Pot), Engine, Studio, Pattern, State, Presets, Render, Record, Environment, Limits, Scenarios, Rf | `InterferenceTests.exe` | 168 (3 slow skipped) | **pass**, 0 failed checks |
+| Core, sources (Loose Jack, Plug Touch, Cable Handling, Dirty Pot), Engine, Studio, Pattern, State, Presets, Render, Record, Environment, Limits, Scenarios, Rf | `InterferenceTests.exe` | 171 (3 slow skipped) | **pass**, 0 failed checks (realism rows also re-run at 44.1 kHz / 64 and 96 kHz / 1024) |
 | Perf (slow): CPU benchmark, cost breakdown, 1 h offline soak | `InterferenceTests.exe --slow --filter Perf` | 3 | **pass** |
-| Host contract + GUI (headless editor: buses, IDs, state, MIDI/learn, reset/randomize/A-B, resize × 5 tabs, overlays, presets × source pairs, concurrency, teardown during render, record, debug tools, secret pixel) | `InterferenceGuiTests.exe` | 13 | see final run below |
+| Host contract + GUI (headless editor: buses, IDs, state, MIDI/learn, reset/randomize/A-B, resize × 5 tabs, overlays, presets × source pairs, concurrency, teardown during render, record, debug tools, secret pixel) | `InterferenceGuiTests.exe` | 17 | **pass**, 0 failed checks (adds Details / Environment fit at 1000×700, project reopen identity, Why-quiet and dormant flags, focus-chain titles and tooltips) |
 
 What the suites assert (examples, not exhaustive): silence invariant for every source pair, mode and mix; exact
 identity for bypass, empty/bypassed slots, 0 % wet and Studio off; `C = R + D + A`; block-size independence
@@ -94,9 +94,19 @@ constant by construction; no separate memory profiler was run.
 
 ### Validation, packaging, install
 
-- pluginval (Tracktion) on the Release VST3: see the final run recorded below.
-- Release ZIP: `tools/make_release.ps1` output and SHA-256 recorded below.
-- Installed to `C:\Program Files\Common Files\VST3\Interference.vst3` on this machine (FL Studio 2025 scans it).
+- **pluginval** (Tracktion), strictness level **10**, in-process, on the final Release VST3: **pass** (exit code 0,
+  25 test groups: scan, cold/warm open, info, programs, editor, editor while processing, audio processing,
+  non-releasing processing, state and state restoration, automation, editor automation, automatable parameters,
+  parameters, background-thread state, parameter thread safety, VST3 validator, buses, fuzz parameters). Log:
+  `build/pluginval/pluginval_run.txt`. Command: see *How to reproduce*.
+- **Release ZIP**: `dist/Interference-1.0.0-win64.zip` (29 files, about 6.2 MB). Its SHA-256 is written next to it in
+  `Interference-1.0.0-win64.zip.sha256` (this file is inside the ZIP, so it cannot quote its own hash). Built twice
+  from the same commit with Windows PowerShell 5.1: identical hash. Contents: VST3 bundle, stand-alone app, README, CHANGELOG, LICENSE, THIRD_PARTY, all user docs,
+  the electrical-interference research note, `ThirdPartyLicenses/` (JUCE, HarfBuzz, SheenBidi, libpng, IJG, zlib,
+  VST3 SDK) and `SIGNATURE.txt` (UNSIGNED build).
+- **Build**: Release, all targets, 0 errors, 0 warnings (MSVC 14.44 with JUCE's recommended warning flags).
+- **Installed** to `C:\Program Files\Common Files\VST3\Interference.vst3` on this machine (FL Studio 2025 scans it);
+  the installed binary is byte-identical to the build.
 
 ## Unverified release gates
 

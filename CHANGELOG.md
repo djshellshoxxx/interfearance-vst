@@ -44,8 +44,8 @@ First release.
 ### Release notes 1.0.0
 
 - **Formats:** VST3 (Windows x64) and a stand-alone Windows app. No installer: copy the bundle (see `Docs/Install.md`).
-- **Verified:** 168 offline DSP/state/render/environment tests, 13 headless host and GUI tests, a CPU benchmark
-  (about 12 % of one 2011 laptop core at 48 kHz, worst case), a 1-hour offline soak with automation, pluginval
+- **Verified:** 171 offline DSP/state/render/environment tests, 17 headless host and GUI tests, a CPU benchmark
+  (about 12 % of one 2011 laptop core at 48 kHz, worst case), a 1-hour offline soak with automation, pluginval at strictness 10
   (see `Docs/QA.md` for the exact commands and results). CI workflow in `.github/workflows/ci.yml`.
 - **Not yet verified:** loading in a real DAW, a real-time host soak, sidechain in a host, empirical calibration
   against recordings, and the publisher items (homepage, support e-mail, JUCE/VST3 licences, signing). These are
