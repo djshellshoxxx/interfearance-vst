@@ -70,3 +70,6 @@ Wubforge document and is used only for its general interaction grammar (overlays
 - theme.md "never boxes inside boxes": the slot cards and illustrations keep a 1 px bordered panel. Reason: they are
   the two selectable, clickable units of the window (selection is shown by the accent border); every other grouping
   uses 1 px separator lines.
+- CPU gate in Perf.cpuRealtimeFactorWorstCase: < 80 % of one core at every rate (real time with host headroom) and
+  192 kHz <= 6x the 48 kHz cost (graceful, ~linear scaling). An absolute 50 % line sat inside the +-30 % run-to-run
+  noise of the 2011 test laptop (measured 39-55 % at 192 kHz worst case); the numbers are recorded in QA.md.

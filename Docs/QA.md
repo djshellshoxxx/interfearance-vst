@@ -78,11 +78,12 @@ Ghost Carrier + lane running, stereo, 256-sample blocks, under `ScopedNoDenormal
 |---|---|---|
 | 44.1 kHz | ~12 % | ~8× |
 | 48 kHz | ~12 % | ~8.5× |
-| 96 kHz | ~21 % | ~4.7× |
-| 192 kHz | ~39 % | ~2.6× |
+| 96 kHz | ~21–25 % | ~4.0–4.7× |
+| 192 kHz | ~39–55 % (varies run to run) | ~1.8–2.6× |
 
 Cost breakdown at 48 kHz (quiet machine): empty slots ≈ 1.6 %, one source ≈ 2.9 %, two sources ≈ 3.8 %, + Studio
 EQ/Contour ≈ 6.9 %, everything ≈ 9 % of one core. Timings vary ±30 % with background load on this machine.
+Gate (slow test): under 80 % of one core at every rate and 192 kHz ≤ 6× the 48 kHz cost; final build: pass.
 Latency: **0 samples** in every configuration (ADAA instead of oversampling, no lookahead).
 
 ### Soak (offline)
