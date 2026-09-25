@@ -261,6 +261,10 @@ IFX_TEST (Host, slotRulesNeverDuplicate)
     p.setSlots (SourceType::DirtyPot, SourceType::PlugTouch);
     p.setSlotSource (0, SourceType::PlugTouch); // move B's source to A: they swap
     IFX_CHECK (p.slotType (0) == SourceType::PlugTouch && p.slotType (1) == SourceType::DirtyPot);
+    IFX_CLOSE (p.apvts.getRawParameterValue ("slotA_gest")->load(), (float) GestureKind::TouchRelease, 1e-4f);
+    IFX_CLOSE (p.apvts.getRawParameterValue ("slotB_gest")->load(), (float) GestureKind::SlowTurn, 1e-4f);
+    p.setSlotSource (1, SourceType::CableHandling);
+    IFX_CLOSE (p.apvts.getRawParameterValue ("slotB_gest")->load(), (float) GestureKind::Shake, 1e-4f);
 }
 
 IFX_TEST (Host, resetRandomizeAndAB)
