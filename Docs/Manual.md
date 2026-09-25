@@ -126,7 +126,7 @@ and Worn Arc Width (drawn on the illustration), Scratch, Circuit Bias (makes scr
 
 ## Hearing each source and using its gator
 
-Each slot card shows a short action under the source description. Choose a source in A or B, turn the slot **On**, and press **Trigger** to play its selected gesture. For hands-on sound, drag the illustration. A gesture moves hardware; it cannot make a healthy, stationary circuit produce a fault by itself. If the slot is quiet, click **Why quiet?** for the current cause.
+Each slot card shows a short action under the source description. Choose a source in A or B, turn the slot **On**, and press **Trigger** to play its selected gesture. Choosing a source picks a suitable first gesture (Wiggle, Touch and Release, Shake or Slow Turn); you can change it in the gesture menu. Loading a saved preset keeps its saved gesture. For hands-on sound, drag the illustration. A gesture moves hardware; it cannot make a healthy, stationary circuit produce a fault by itself. If the slot is quiet, click **Why quiet?** for the current cause.
 
 - **Loose Jack:** move the plug toward the worn area and trigger a Wiggle. Fully seated on healthy contact is quiet.
 - **Exposed Plug Touch:** raise Environment > Hum, then press the finger illustration or trigger Touch and Release.
