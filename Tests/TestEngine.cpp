@@ -20,7 +20,7 @@ void addWiggles (Harness& h, int n)
 
 IFX_TEST (Engine, slotGatorsAreIndependentAndDefaultOff)
 {
-    auto render = [] (bool gateA, bool gateB, float depth)
+    auto render = [] (bool gateA, bool gateB, float depth, bool jackInB = false)
     {
         Harness h (kFs, 1, 256);
         h.params = quietParams();
@@ -32,7 +32,8 @@ IFX_TEST (Engine, slotGatorsAreIndependentAndDefaultOff)
         h.params[P::gateBOn] = gateB ? 1.0f : 0.0f;
         h.params[P::gateARate] = h.params[P::gateBRate] = 0.0f; // quarter notes
         h.params[P::gateADepth] = h.params[P::gateBDepth] = depth;
-        h.setSlots (SourceType::LooseJack, SourceType::None);
+        h.setSlots (jackInB ? SourceType::None : SourceType::LooseJack,
+                    jackInB ? SourceType::LooseJack : SourceType::None);
         return h.runSilence ((int) kFs);
     };
 
@@ -45,6 +46,10 @@ IFX_TEST (Engine, slotGatorsAreIndependentAndDefaultOff)
     // At 120 BPM the quarter-note gate is closed from 0.25 to 0.5 s.
     IFX_CHECK (maxAbsDiff (slice (original, 16000, 2000),
                             slice (onlyA, 16000, 2000)) > 1.0e-3);
+    const auto baselineB = render (false, false, 1.0f, true);
+    const auto gatedB = render (false, true, 1.0f, true);
+    IFX_CHECK (maxAbsDiff (slice (baselineB, 16000, 2000),
+                            slice (gatedB, 16000, 2000)) > 1.0e-3);
 }
 
 IFX_TEST (Engine, silenceInvariantEverySourcePairModeAndMix)
