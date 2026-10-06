@@ -303,6 +303,12 @@ public:
         const bool link = prm.on (P::linkGesture);
         const float chaos = prm[P::chaos];
         const bool slotOn[2] = { prm.on (P::slotAOn), prm.on (P::slotBOn) };
+        const bool soloOn[2] = { prm.on (P::slotASolo), prm.on (P::slotBSolo) };
+        const bool anySolo = soloOn[0] || soloOn[1];
+        const bool slotAudible[2] = { slotOn[0] && (! anySolo || soloOn[0]),
+                                      slotOn[1] && (! anySolo || soloOn[1]) };
+        const float life[2] = { std::clamp (prm[P::slotALife], 0.0f, 1.0f),
+                                std::clamp (prm[P::slotBLife], 0.0f, 1.0f) };
         const bool gateOn[2] = { prm.on (P::gateAOn), prm.on (P::gateBOn) };
         const int gateRate[2] = { prm.choice (P::gateARate), prm.choice (P::gateBRate) };
         const float gateDepth[2] = { std::clamp (prm[P::gateADepth], 0.0f, 1.0f),
@@ -471,6 +477,35 @@ public:
                 g[0] = g[1] = m;
             }
 
+            // Life is a per-slot performance macro, not an output LFO. It adds smooth,
+            // deterministic physical micro-motion to the same GestureOut consumed by each
+            // source model, so source prerequisites and Natural/Expressive limits still apply.
+            for (int s = 0; s < 2; ++s)
+            {
+                const float amount = life[s] * dist[s];
+                if (amount <= 0.0f || slotType[s] == SourceType::None)
+                    continue;
+
+                const double rate0 = 0.13 + 0.72 * amount * amount + 0.05 * (double) s;
+                const double rate1 = rate0 * (s == 0 ? 1.71 : 1.93);
+                lifePhase[s][0] += rate0 / fs;
+                lifePhase[s][1] += rate1 / fs;
+                lifePhase[s][0] -= std::floor (lifePhase[s][0]);
+                lifePhase[s][1] -= std::floor (lifePhase[s][1]);
+
+                const float motionDepth = amount * (0.035f + 0.18f * amount);
+                const float pressureDepth = amount * (0.03f + 0.12f * amount);
+                const float slow = (float) std::sin (2.0 * kPi * lifePhase[s][0]);
+                const float fast = (float) std::sin (2.0 * kPi * lifePhase[s][1]);
+                const float pressureWave = (float) std::sin (2.0 * kPi * (lifePhase[s][1] + 0.21));
+
+                g[s].displacement = std::clamp (g[s].displacement
+                                                + motionDepth * (0.72f * slow + 0.28f * fast),
+                                                -1.0f, 1.0f);
+                g[s].pressure = std::clamp (g[s].pressure + pressureDepth * pressureWave,
+                                            -1.0f, 1.0f);
+            }
+
             ctx.env = env.step();
 
             // ---- input conditioning + excitation ---------------------------------
@@ -509,15 +544,15 @@ public:
                 if (slotType[s] == SourceType::None) continue;
                 src[s] = sources[(int) slotType[s]];
                 src[s]->control (g[s], ctx);
-                const float target = slotOn[s] ? 1.0f : 0.0f;
+                const float target = slotAudible[s] ? 1.0f : 0.0f;
                 slotMix[s] = rampTo (slotMix[s], target);
             }
 
             // shared noise budget (probabilistic union instead of summing two hum pickups)
             float envScale = 1.0f;
             {
-                const float c0 = src[0] && slotOn[0] ? src[0]->pickupCoupling() : 0.0f;
-                const float c1 = src[1] && slotOn[1] ? src[1]->pickupCoupling() : 0.0f;
+                const float c0 = src[0] ? src[0]->pickupCoupling() * slotMix[0] : 0.0f;
+                const float c1 = src[1] ? src[1]->pickupCoupling() * slotMix[1] : 0.0f;
                 const float sum = c0 + c1;
                 if (sum > 1.0e-6f)
                 {
@@ -548,8 +583,8 @@ public:
                 // the hum breathes with movement; a fully open ground breaks the loop
                 double open = 0.0;
                 for (int s = 0; s < 2; ++s)
-                    if (src[s] != nullptr && slotOn[s] && (slotType[s] == SourceType::LooseJack || slotType[s] == SourceType::CableHandling))
-                        open = std::max (open, (double) std::clamp (src[s]->tele.auxOpenness, 0.0f, 1.0f));
+                    if (src[s] != nullptr && slotMix[s] > 0.0f && (slotType[s] == SourceType::LooseJack || slotType[s] == SourceType::CableHandling))
+                        open = std::max (open, (double) std::clamp (src[s]->tele.auxOpenness * slotMix[s], 0.0f, 1.0f));
                 const double r = glRloopS + 1.0 * open;
                 const double vLeak = glLeakS * r * (1.0 - open);                 // 2-prong leakage current source
                 const double vGnd = glVdS * r / (r + 0.5) * (1.0 - open);        // grounded: ground-voltage difference
@@ -1097,6 +1132,8 @@ private:
         lastBar = -1;
         chokeSamples = 0;
         ghostPhase = ghostLfo = 0.0;
+        lifePhase[0][0] = 0.0;  lifePhase[0][1] = 0.37;
+        lifePhase[1][0] = 0.19; lifePhase[1][1] = 0.71;
         studio.setChoke (false, false, false);
         sendTarget = sendGain = 1.0f;
         sendSamples = 0;
@@ -1150,6 +1187,7 @@ private:
     float trim = 1.0f, excGain = 0.0f, studioMix = 0.0f, rawMix = 0.0f, bypassMix = 0.0f, ceilGain = 1.0f;
     float slotMix[2] { 1.0f, 1.0f };
     float gateGain[2] { 1.0f, 1.0f };
+    double lifePhase[2][2] { { 0.0, 0.37 }, { 0.19, 0.71 } };
     double freeGatePpq = 0.0;
     float ghostRamp = 0.0f;
     float glPrev = 0.0f, glLeakS = 0.0f, glVdS = 0.0f, glRloopS = 1.0f, glG0S = 1.0f, glDiffKS = 0.0f, gsmLevelS = 0.0f;
