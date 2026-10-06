@@ -69,9 +69,6 @@ A short chronological log. Commit hashes refer to `git log`. The detailed task l
 - GitHub Actions currently fails within seconds on both this branch and current `master`; CI infrastructure therefore remains an external verification blocker for this pass.
 
 ## Where to resume
-1. `TODO.md`, section "Remaining": integrate any outstanding agent work, full build, all tests. Then pluginval
-   strictness 10, `tools/make_release.ps1`, and record both results in `Docs/QA.md`.
-2. `Docs/QA.md`, section "Unverified release gates": DAW load in FL Studio, a real-time host soak and memory check,
-   sidechain in a host, empirical calibration, publisher items (homepage, support e-mail, licences, signing
-   certificate), the sanitizer build, and other platforms.
-3. `Docs/research/SpecAudit.md` section 12: the remaining (d) items and who owns them.
+1. Restore a working CI run and execute the normal Windows build plus DSP/GUI suites for the new Solo/Life commits.
+2. Reconcile `codex/dynamic-life-and-solo` with the seven newer `master` commits before merge; the branches currently diverge.
+3. Keep `TODO.md` as the release-gate source of truth. Its implementation list is complete; remaining work is external validation/publisher work plus verification of this new feature branch.
