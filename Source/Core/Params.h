@@ -182,7 +182,12 @@ X(gateARate,   "gateA_rate",  "Slot A Gate Rate",   C, 0, 3, 2, 0, "", "1/4|1/8|
 X(gateADepth,  "gateA_depth", "Slot A Gate Depth", F, 0, 1, 1, 0, "%", "", "How much slot A faults are cut during the closed half of the gate.") \
 X(gateBOn,     "gateB_on",    "Slot B Gator",       B, 0, 1, 0, 0, "", "", "Tempo-synced gator on slot B faults. Off keeps the original sound.") \
 X(gateBRate,   "gateB_rate",  "Slot B Gate Rate",   C, 0, 3, 2, 0, "", "1/4|1/8|1/16|1/32", "Duration of one open/closed cycle for slot B, synced to the host or internal BPM.") \
-X(gateBDepth,  "gateB_depth", "Slot B Gate Depth", F, 0, 1, 1, 0, "%", "", "How much slot B faults are cut during the closed half of the gate.")
+X(gateBDepth,  "gateB_depth", "Slot B Gate Depth", F, 0, 1, 1, 0, "%", "", "How much slot B faults are cut during the closed half of the gate.") \
+/* --- slot audition + motion macros (appended; existing IDs stay stable) --- */ \
+X(slotASolo,   "slotA_solo",  "Slot A Solo",        B, 0, 1, 0, 0, "", "", "Hear slot A without slot B. If both Solo buttons are on, both slots play.") \
+X(slotBSolo,   "slotB_solo",  "Slot B Solo",        B, 0, 1, 0, 0, "", "", "Hear slot B without slot A. If both Solo buttons are on, both slots play.") \
+X(slotALife,   "slotA_life",  "Slot A Life",        F, 0, 1, 0, 0, "%", "", "Smooth automatic micro-motion for slot A. Higher values move the source more and faster while keeping its physical rules.") \
+X(slotBLife,   "slotB_life",  "Slot B Life",        F, 0, 1, 0, 0, "%", "", "Smooth automatic micro-motion for slot B. Higher values move the source more and faster while keeping its physical rules.")
 
 enum P : int
 {
