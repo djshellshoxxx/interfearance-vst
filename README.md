@@ -90,3 +90,8 @@ The DSP never depends on the GUI. The audio thread never allocates, locks, logs 
 Signing happens only for `v*` tags, in the `release` environment, and only when it holds the secret
 `SIGNING_CERT_BASE64` (base64 PFX, optional `SIGNING_CERT_PASSWORD`). A signature is never faked. pluginval and DAW
 loading are not part of CI (see `Docs/QA.md`).
+
+
+## Required shared plug-in standard
+
+This project follows the [Circuit Drift Labs Shared Audio Plugin Standard](docs/standards/CDL_PLUGIN_BASELINE.md). It is required for the plug-in target; standalone-only requirements apply only when a standalone target is included. The product-specific specification supplements the shared standard and records the applicable profiles, compliance status, and any exceptions.
