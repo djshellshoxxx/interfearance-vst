@@ -137,6 +137,10 @@ For any signal-dependent fault on a silent track, choose **Create > Excitation**
 
 Each slot has its own **Gator**, **Rate** and **Depth** controls on its card. Turn Gator on to rhythmically cut that slot's contribution to the wet signal. Rate is a full open/closed cycle in quarter, eighth, sixteenth or thirty-second notes at the host tempo, or at the internal BPM when transport is unavailable. Depth 0% makes no cut; 100% removes that slot's fault contribution during the closed half. Switching a gator off restores the original source behavior. The input and shared Environment remain audible, and the other slot's gator is independent. The edges ramp over 10 ms to avoid clicks. To hear a gator clearly, first make its slot produce audible faults.
 
+Each slot also has **Solo** and **Life**. Solo is for fast A/B diagnosis and sound design: Solo A hears A without B, Solo B hears B without A, and turning both Solo buttons on hears both. A soloed-out source keeps advancing its contact and movement state, so returning it does not restart old events. Solo transitions use the same short declick ramp as slot bypass.
+
+**Life** is a performance macro for continuous variation. At 0% it does nothing. Turning it up adds slow deterministic micro-motion to that slot's existing gesture signal, with both depth and speed increasing as the knob rises. It does not add generic noise or bypass physical requirements. On Loose Jack it can keep a worn contact moving; on Exposed Plug Touch it gently changes contact pressure; on Cable Handling it flexes the cable through its weak spot; on Dirty Pot it moves the wiper through dirt and wear. Disturbance still scales that motion, and a source that has no eligible fault remains physically quiet.
+
 ## Two slots, order and linking
 
 Slots are processed in series: A then B, or B then A with **Swap Order**. The order button between the slot cards
