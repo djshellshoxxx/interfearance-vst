@@ -67,8 +67,10 @@ juce::String explainQuiet (InterferenceProcessor& proc, int slot, const SlotView
 SlotCard::SlotCard (InterferenceProcessor& p, int s)
     : proc (p), slot (s),
       enable (p, s == 0 ? P::slotAOn : P::slotBOn, "On"),
+      solo (p, s == 0 ? P::slotASolo : P::slotBSolo, "Solo"),
       gesture (p, s == 0 ? P::gestureA : P::gestureB),
       level (p, s == 0 ? P::slotALevel : P::slotBLevel, ParamKnob::Style::SmallKnob, "Disturb"),
+      life (p, s == 0 ? P::slotALife : P::slotBLife, ParamKnob::Style::SmallKnob, "Life"),
       trigger (p, s == 0 ? P::trigA : P::trigB, "Trigger"),
       gate (p, s == 0 ? P::gateAOn : P::gateBOn, "Gator"),
       gateRate (p, s == 0 ? P::gateARate : P::gateBRate),
@@ -86,8 +88,10 @@ SlotCard::SlotCard (InterferenceProcessor& p, int s)
     };
     addAndMakeVisible (sourceBox);
     addAndMakeVisible (enable);
+    addAndMakeVisible (solo);
     addAndMakeVisible (gesture);
     addAndMakeVisible (level);
+    addAndMakeVisible (life);
     addAndMakeVisible (trigger);
     addAndMakeVisible (why);
     addAndMakeVisible (meter);
@@ -99,7 +103,9 @@ SlotCard::SlotCard (InterferenceProcessor& p, int s)
     addAndMakeVisible (gate);
     addAndMakeVisible (gateRate);
     addAndMakeVisible (gateDepth);
-    gate.setTooltip ("Switch this slot\'s rhythmic fault gator on or off. It runs at host BPM, or internal BPM without transport.");
+    solo.setTooltip ("Hear this slot without the other slot. If both Solo buttons are on, both slots play.");
+    life.setTooltip ("Adds smooth automatic micro-motion to this source. Higher values move it more and faster while keeping the source's normal physical rules.");
+        gate.setTooltip ("Switch this slot\'s rhythmic fault gator on or off. It runs at host BPM, or internal BPM without transport.");
     gateRate.setTooltip ("Rate of the open/closed gator cycle for this slot (quarter, eighth, sixteenth or thirty-second notes).");
     gateDepth.setTooltip ("How much of this slot\'s faults are removed on the closed half. The other slot and base sound keep playing.");
     trigger.setTooltip (juce::String ("Play this slot's gesture now (hold to sustain gestures that last until release).\n"
@@ -159,6 +165,8 @@ void SlotCard::refresh (const SlotView& v, bool sel)
     const bool empty = proc.slotType (slot) == SourceType::None;
     trigger.setEnabled (! empty);
     gesture.setEnabled (! empty);
+    solo.setEnabled (! empty);
+    life.setEnabled (! empty);
     gate.setEnabled (! empty);
     gateRate.setEnabled (! empty);
     gateDepth.setEnabled (! empty);
@@ -210,7 +218,9 @@ void SlotCard::resized()
     auto row1 = r.removeFromTop (22);
     row1.removeFromLeft (30);
     enable.setBounds (row1.removeFromRight (40));
-    row1.removeFromRight (6);
+    row1.removeFromRight (4);
+    solo.setBounds (row1.removeFromRight (48));
+    row1.removeFromRight (4);
     sourceBox.setBounds (row1);
     r.removeFromTop (4);
     causeArea = r.removeFromTop (28);
@@ -219,7 +229,9 @@ void SlotCard::resized()
     r.removeFromTop (4);
     triggerHint.setBounds (r.removeFromTop (18));
     auto row3 = r.removeFromTop (std::min (48, r.getHeight()));
-    level.setBounds (row3.removeFromRight (52));
+    life.setBounds (row3.removeFromRight (48));
+    row3.removeFromRight (2);
+    level.setBounds (row3.removeFromRight (48));
     row3.removeFromRight (4);
     auto btns = row3.removeFromRight (78);
     trigger.setBounds (btns.removeFromTop (btns.getHeight() / 2).reduced (0, 1));
