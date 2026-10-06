@@ -687,3 +687,128 @@ IFX_TEST (Engine, everyMonitorTapInMonoAndStereoKeepsItsIdentities)
         IFX_CHECK_MSG (rmsOf (taps[(int) Tap::FaultDifference]) > 1.0e-6, layout + ": fault difference present");
     }
 }
+
+
+IFX_TEST (Engine, soloAExcludesSlotBButKeepsSlotA)
+{
+    auto render = [] (bool includeB, bool soloA)
+    {
+        Harness h (kFs, 1, 256);
+        h.params = quietParams();
+        h.params[P::slotASolo] = soloA ? 1.0f : 0.0f;
+        h.params[P::ptTurn] = 0.35f;
+        h.params[P::ptDirt] = 0.0f;
+        h.params[P::jkInsert] = 1.0f;
+        h.setSlots (SourceType::LooseJack, includeB ? SourceType::DirtyPot : SourceType::None);
+        const auto in = sine (1, (int) kFs, 440.0, kFs);
+        return h.run (in);
+    };
+
+    const auto soloed = render (true, true);
+    const auto aOnly = render (false, false);
+    IFX_CHECK_MSG (maxAbsDiff (slice (soloed, 6000, 36000), slice (aOnly, 6000, 36000)) < 1.0e-6,
+                   "solo A must remove only slot B after the declick ramp");
+}
+
+IFX_TEST (Engine, bothSoloMatchesNormalTwoSlotRouting)
+{
+    auto render = [] (bool bothSolo)
+    {
+        Harness h (kFs, 1, 256);
+        h.params = quietParams();
+        h.params[P::slotASolo] = bothSolo ? 1.0f : 0.0f;
+        h.params[P::slotBSolo] = bothSolo ? 1.0f : 0.0f;
+        h.params[P::ptTurn] = 0.65f;
+        h.params[P::jkInsert] = 1.0f;
+        h.setSlots (SourceType::DirtyPot, SourceType::LooseJack);
+        return h.run (sine (1, (int) kFs, 330.0, kFs));
+    };
+
+    IFX_CHECK (maxAbsDiff (render (false), render (true)) < 1.0e-7);
+}
+
+IFX_TEST (Engine, lifeZeroIsExactLegacyBehaviour)
+{
+    auto render = [] (bool explicitZero)
+    {
+        Harness h (kFs, 2, 257);
+        h.params = quietParams();
+        if (explicitZero)
+        {
+            h.params[P::slotALife] = 0.0f;
+            h.params[P::slotBLife] = 0.0f;
+        }
+        h.params[P::hum] = 0.4f;
+        h.params[P::jkInsert] = 0.82f;
+        h.params[P::jkWear] = 0.7f;
+        h.params[P::cbMic] = 0.4f;
+        h.params[P::cbDamage] = 0.7f;
+        h.params[P::cbBend] = h.params[P::cbWeakPos] = 0.5f;
+        h.setSlots (SourceType::LooseJack, SourceType::CableHandling);
+        return h.run (drums (2, (int) kFs, kFs));
+    };
+
+    IFX_CHECK (maxAbsDiff (render (false), render (true)) == 0.0);
+}
+
+IFX_TEST (Engine, lifeMakesEverySourceMoreDynamic)
+{
+    auto render = [] (SourceType type, float life)
+    {
+        Harness h (kFs, 1, 256);
+        h.params = quietParams();
+        h.params[P::slotALife] = life;
+        h.params[P::hum] = 0.6f;
+        h.params[P::jkInsert] = 0.78f;
+        h.params[P::jkWear] = 1.0f;
+        h.params[P::jkWearPos] = 0.78f;
+        h.params[P::jkPressure] = 0.35f;
+        h.params[P::tcTouch] = 0.45f;
+        h.params[P::tcPressure] = 0.35f;
+        h.params[P::tcExposure] = 1.0f;
+        h.params[P::tcShield] = 0.0f;
+        h.params[P::cbBend] = 0.5f;
+        h.params[P::cbWeakPos] = 0.5f;
+        h.params[P::cbDamage] = 1.0f;
+        h.params[P::cbShieldDmg] = 0.8f;
+        h.params[P::cbMic] = 0.7f;
+        h.params[P::ptTurn] = 0.5f;
+        h.params[P::ptWearPos] = 0.5f;
+        h.params[P::ptWearWidth] = 0.35f;
+        h.params[P::ptDirt] = 1.0f;
+        h.params[P::ptScratch] = 1.0f;
+        h.params[P::ptBias] = 0.3f;
+        h.setSlots (type, SourceType::None);
+        return h.run (sine (1, (int) (kFs * 2.0), 220.0, kFs));
+    };
+
+    for (auto type : kAllSources)
+    {
+        const auto still = render (type, 0.0f);
+        const auto alive = render (type, 0.85f);
+        IFX_CHECK_MSG (maxAbsDiff (still, alive) > 1.0e-5,
+                       juce::String (sourceName (type)) + " did not respond to Life");
+    }
+}
+
+IFX_TEST (Engine, lifeIsBlockSizeIndependent)
+{
+    auto render = [] (int block)
+    {
+        Harness h (kFs, 2, block);
+        h.params = quietParams();
+        h.params[P::slotALife] = 0.75f;
+        h.params[P::slotBLife] = 0.55f;
+        h.params[P::hum] = 0.5f;
+        h.params[P::jkInsert] = 0.8f;
+        h.params[P::jkWear] = 0.9f;
+        h.params[P::cbBend] = h.params[P::cbWeakPos] = 0.5f;
+        h.params[P::cbDamage] = 0.8f;
+        h.params[P::cbMic] = 0.5f;
+        h.setSlots (SourceType::LooseJack, SourceType::CableHandling);
+        return h.run (drums (2, (int) (kFs * 2.0), kFs));
+    };
+
+    IFX_CHECK_MSG (maxAbsDiff (render (64), render (333)) < 1.0e-6,
+                   "Life must not depend on host block size");
+}
