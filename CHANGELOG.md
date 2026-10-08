@@ -9,6 +9,13 @@ Interference uses semantic versioning: MAJOR.MINOR.PATCH.
 - **MAJOR**: reserved for a change that cannot load old state identically; a migration step converts old state and
   the change is documented here.
 
+## Unreleased
+
+- Added a CLAP build (clap-juce-extensions, pinned) and a Linux x64 build (VST3, CLAP, stand-alone). CI builds,
+  tests and packages both platforms. Linux QA: 171 DSP + 17 GUI tests pass (GCC 13, Release). Known Linux limit: the
+  crash-log hook is Windows-only, so no crash log is written on Linux. DAW load and pluginval on Linux/CLAP are not
+  yet verified.
+
 ## Backward-compatibility policy
 
 - Host parameter IDs (`Source/Core/Params.h`) are stable forever once shipped.

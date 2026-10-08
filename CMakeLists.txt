@@ -34,6 +34,20 @@ else()
     FetchContent_MakeAvailable(juce)
 endif()
 
+# CLAP format via clap-juce-extensions (pinned commit; a ./clap-juce-extensions checkout is used if present).
+option(INTERFERENCE_BUILD_CLAP "Also build a CLAP plug-in" ON)
+if(INTERFERENCE_BUILD_CLAP)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/clap-juce-extensions/CMakeLists.txt")
+        add_subdirectory(clap-juce-extensions EXCLUDE_FROM_ALL)
+    else()
+        include(FetchContent)
+        FetchContent_Declare(clap_juce_extensions
+            GIT_REPOSITORY https://github.com/free-audio/clap-juce-extensions.git
+            GIT_TAG 7adee3a1bd4684d4caa5601100e364abccff4b4d)
+        FetchContent_MakeAvailable(clap_juce_extensions)
+    endif()
+endif()
+
 set(IFX_DEFS
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
@@ -126,6 +140,12 @@ if(IFX_HAVE_PLUGIN)
     target_link_libraries(Interference PRIVATE ${IFX_MODULES}
         PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
     juce_generate_juce_header(Interference)
+    if(INTERFERENCE_BUILD_CLAP)
+        clap_juce_extensions_plugin(TARGET Interference
+            CLAP_ID "audio.interference.interference"
+            CLAP_FEATURES audio-effect distortion
+            CLAP_PROCESS_EVENTS_RESOLUTION_SAMPLES 64)
+    endif()
     target_compile_definitions(Interference PUBLIC ${IFX_DEFS}
         JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_MODAL_LOOPS_PERMITTED=0)
 endif()

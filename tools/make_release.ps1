@@ -76,6 +76,8 @@ Get-ChildItem -Recurse -File -LiteralPath $vst3 | ForEach-Object {
     Add-Item $_.FullName ("$name/VST3/Interference.vst3/" + $rel.Replace('\', '/'))
 }
 Add-Item $exe "$name/Standalone/Interference.exe"
+$clap = Join-Path $art "CLAP\Interference.clap"
+if (Test-Path -LiteralPath $clap) { Add-Item (Resolve-Path -LiteralPath $clap).ProviderPath "$name/CLAP/Interference.clap" }
 foreach ($f in @("README.md", "CHANGELOG.md", "LICENSE", "THIRD_PARTY.md")) { Add-Item (Join-Path $root $f) "$name/$f" }
 Get-ChildItem -File (Join-Path $root "Docs") -Filter *.md | ForEach-Object { Add-Item $_.FullName "$name/Docs/$($_.Name)" }
 # the one research note the README and Research.md link to (the other internal reports stay out)
