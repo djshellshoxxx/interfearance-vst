@@ -104,10 +104,7 @@ SlotCard::SlotCard (InterferenceProcessor& p, int s)
     addAndMakeVisible (gateRate);
     addAndMakeVisible (gateDepth);
     solo.setTooltip ("Hear this slot without the other slot. If both Solo buttons are on, both slots play.");
-    life.setTooltip ("Adds smooth automatic micro-motion to this source. Higher values move it more and faster while keeping the source's normal physical rules.");
-        gate.setTooltip ("Switch this slot\'s rhythmic fault gator on or off. It runs at host BPM, or internal BPM without transport.");
-    gateRate.setTooltip ("Rate of the open/closed gator cycle for this slot (quarter, eighth, sixteenth or thirty-second notes).");
-    gateDepth.setTooltip ("How much of this slot\'s faults are removed on the closed half. The other slot and base sound keep playing.");
+    gate.setTooltip ("Switch this slot's rhythmic fault gator on or off. It runs at host BPM, or internal BPM without transport.");
     trigger.setTooltip (juce::String ("Play this slot's gesture now (hold to sustain gestures that last until release).\n"
                                       "Right-click: MIDI learn, reset or type a value for ") + paramInfo (s == 0 ? P::trigA : P::trigB).name + ".");
     trigger.setTitle (juce::String ("Play slot ") + (s == 0 ? "A" : "B"));
