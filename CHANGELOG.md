@@ -12,9 +12,9 @@ Interference uses semantic versioning: MAJOR.MINOR.PATCH.
 ## Unreleased
 
 - Added a CLAP build (clap-juce-extensions, pinned) and a Linux x64 build (VST3, CLAP, stand-alone). CI builds,
-  tests and packages both platforms. Linux QA: 171 DSP + 17 GUI tests pass (GCC 13, Release). Known Linux limit: the
-  crash-log hook is Windows-only, so no crash log is written on Linux. DAW load and pluginval on Linux/CLAP are not
-  yet verified.
+  tests and packages both platforms. Linux QA: 171 DSP + 17 GUI tests pass (GCC 13, Release). The opt-in crash
+  log has a POSIX fatal-signal path (compiled on Linux, not yet covered by an automated test). DAW load and pluginval
+  on Linux/CLAP are not yet verified.
 
 ## Backward-compatibility policy
 
