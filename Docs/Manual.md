@@ -124,6 +124,23 @@ dirt), Taper (Linear, Log A, Reverse Log C), Circuit (Level, or Tone: 250 k + 22
 and Worn Arc Width (drawn on the illustration), Scratch, Circuit Bias (makes scratch audible on silence), Vibration
 (only a pot with Dirt above 70 % stays intermittent while held still). Holding the knob still stops the scratch.
 
+## Hearing each source and using its gator
+
+Each slot card shows a short action under the source description. Choose a source in A or B, turn the slot **On**, and press **Trigger** to play its selected gesture. Choosing a source picks a suitable first gesture (Wiggle, Touch and Release, Shake or Slow Turn); you can change it in the gesture menu. Loading a saved preset keeps its saved gesture. For hands-on sound, drag the illustration. A gesture moves hardware; it cannot make a healthy, stationary circuit produce a fault by itself. If the slot is quiet, click **Why quiet?** for the current cause.
+
+- **Loose Jack:** move the plug toward the worn area and trigger a Wiggle. Fully seated on healthy contact is quiet.
+- **Exposed Plug Touch:** raise Environment > Hum, then press the finger illustration or trigger Touch and Release.
+- **Cable Handling:** raise Mic for handling noise, then shake the cable; for electrical interruptions raise Damage or Shield Damage.
+- **Dirty Pot:** raise Dirt, turn the knob across the worn arc, and feed it audio or enable Create > Excitation. Circuit Bias can make scratch audible on silence.
+
+For any signal-dependent fault on a silent track, choose **Create > Excitation** (Noise, Buzz or Test Tone), or feed the plugin audio. Ground-loop buzz is an independent Environment sound and may remain audible when the hardware slots are quiet.
+
+Each slot has its own **Gator**, **Rate** and **Depth** controls on its card. Turn Gator on to rhythmically cut that slot's contribution to the wet signal. Rate is a full open/closed cycle in quarter, eighth, sixteenth or thirty-second notes at the host tempo, or at the internal BPM when transport is unavailable. Depth 0% makes no cut; 100% removes that slot's fault contribution during the closed half. Switching a gator off restores the original source behavior. The input and shared Environment remain audible, and the other slot's gator is independent. The edges ramp over 10 ms to avoid clicks. To hear a gator clearly, first make its slot produce audible faults.
+
+Each slot also has **Solo** and **Life**. Solo is for fast A/B diagnosis and sound design: Solo A hears A without B, Solo B hears B without A, and turning both Solo buttons on hears both. A soloed-out source keeps advancing its contact and movement state, so returning it does not restart old events. Solo transitions use the same short declick ramp as slot bypass.
+
+**Life** is a performance macro for continuous variation. At 0% it does nothing. Turning it up adds slow deterministic micro-motion to that slot's existing gesture signal, with both depth and speed increasing as the knob rises. It does not add generic noise or bypass physical requirements. On Loose Jack it can keep a worn contact moving; on Exposed Plug Touch it gently changes contact pressure; on Cable Handling it flexes the cable through its weak spot; on Dirty Pot it moves the wiper through dirt and wear. Disturbance still scales that motion, and a source that has no eligible fault remains physically quiet.
+
 ## Two slots, order and linking
 
 Slots are processed in series: A then B, or B then A with **Swap Order**. The order button between the slot cards

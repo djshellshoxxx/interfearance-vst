@@ -691,11 +691,11 @@ void MainView::resized()
     for (int s = 0; s < 2; ++s)
     {
         auto col = r.removeFromLeft (colW);
-        cards[s].setBounds (col.removeFromTop (118));
+        cards[s].setBounds (col.removeFromTop (184));
         col.removeFromTop (6);
         if (illus[s] != nullptr) illus[s]->setBounds (col);
         if (s == 0)
-            orderArea = r.removeFromLeft (orderW).withHeight (118);
+            orderArea = r.removeFromLeft (orderW).withHeight (184);
     }
     orderToggle.setBounds (orderArea.withSizeKeepingCentre (orderW - 8, 26));
     layoutStream();

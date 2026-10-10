@@ -32,9 +32,15 @@ private:
     bool selected = false;
     juce::ComboBox sourceBox;
     ParamToggle enable;
+    ParamToggle solo;
     ParamChoice gesture;
     ParamKnob level;
-    ParamMenuButton trigger;        // "Play"; right-click: Trigger A / B parameter menu
+    ParamKnob life;
+    ParamMenuButton trigger;        // momentary gesture trigger for this slot
+    juce::Label triggerHint;
+    ParamToggle gate;
+    ParamChoice gateRate;
+    ParamKnob gateDepth;
     juce::TextButton why { "Why quiet?" };
     LevelMeter meter { {}, false };
     juce::Rectangle<int> causeArea;

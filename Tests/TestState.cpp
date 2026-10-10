@@ -129,6 +129,8 @@ IFX_TEST (State, olderStateMissingFieldsMigratesToDefaults)
     IFX_CHECK (r.slotA == SourceType::CableHandling);
     IFX_CLOSE (r.params[P::cbDamage], 0.66f, 1e-6f);
     IFX_CHECK (r.params[P::hum] == paramInfo (P::hum).def);
+    IFX_CHECK (! r.params.on (P::slotASolo) && ! r.params.on (P::slotBSolo));
+    IFX_CHECK (r.params[P::slotALife] == 0.0f && r.params[P::slotBLife] == 0.0f);
     IFX_CHECK (r.pattern == Pattern());
     IFX_CHECK (r.midiMap.isEmpty());
 }

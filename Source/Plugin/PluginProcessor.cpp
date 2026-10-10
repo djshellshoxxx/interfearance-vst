@@ -377,10 +377,29 @@ void InterferenceProcessor::setSlotSource (int slot, SourceType t)
     SourceType a = slotA, b = slotB;
     SourceType& mine = slot == 0 ? a : b;
     SourceType& other = slot == 0 ? b : a;
-    if (t != SourceType::None && other == t)
+    const bool swapped = t != SourceType::None && other == t;
+    const bool changed = mine != t;
+    if (swapped)
         other = mine; // moving a source between slots swaps them: never a duplicate
     mine = t;
     setSlots (a, b);
+
+    // Only explicit source changes choose a suitable first gesture. Preset/state restore
+    // calls setSlots directly, so previously saved gestures retain their meaning.
+    auto chooseGesture = [this] (int index, SourceType source)
+    {
+        if (source == SourceType::None) return;
+        const int gesture = source == SourceType::PlugTouch ? (int) GestureKind::TouchRelease
+                          : source == SourceType::CableHandling ? (int) GestureKind::Shake
+                          : source == SourceType::DirtyPot ? (int) GestureKind::SlowTurn
+                          : (int) GestureKind::Wiggle;
+        auto* p = param (index == 0 ? P::gestureA : P::gestureB);
+        p->beginChangeGesture();
+        p->setValueNotifyingHost (p->convertTo0to1 ((float) gesture));
+        p->endChangeGesture();
+    };
+    if (changed) chooseGesture (slot, t);
+    if (swapped) chooseGesture (1 - slot, other);
 }
 
 void InterferenceProcessor::setSlots (SourceType a, SourceType b)

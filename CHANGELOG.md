@@ -25,6 +25,12 @@ Interference uses semantic versioning: MAJOR.MINOR.PATCH.
 - Seeded randomness (seed, take, bar keying) is part of the sound: a PATCH release never changes the random
   stream of an existing seed.
 
+## Unreleased
+
+- Added per-slot **Solo** controls for quickly auditioning A or B without changing slot contents or resetting source state. Both Solo buttons on keeps both slots audible.
+- Added per-slot **Life** knobs. Life adds deterministic, smooth physical micro-motion through each source's existing gesture model so sounds can evolve continuously while retaining their normal prerequisites and limits.
+- Added engine coverage for solo routing, zero-value compatibility, per-source Life response and block-size independence.
+
 ## 1.0.0 — 2026-09-23
 
 First release.
