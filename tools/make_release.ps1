@@ -15,6 +15,7 @@
 
     -Build     configure + build Release and run both test suites first (aborts on any failure); the tests write
                their data into a temporary folder (IFX_DATA_ROOT), never into Documents
+    -NoClap    build without the CLAP plug-in (if clap-juce-extensions cannot be fetched)
     -BuildDir  build folder (default: build)
 
 .EXAMPLE
@@ -22,6 +23,7 @@
 #>
 param(
     [switch] $Build,
+    [switch] $NoClap,
     [string] $BuildDir = "build"
 )
 
@@ -41,12 +43,15 @@ function Invoke-Native([scriptblock] $block) {
 $cm = Get-Content -Raw (Join-Path $root "CMakeLists.txt")
 if ($cm -notmatch 'project\(Interference VERSION (\d+\.\d+\.\d+)') { throw "Version not found in CMakeLists.txt" }
 $version = $Matches[1]
+# optional pre-release label: set(IFX_VERSION_LABEL "beta")
+if ($cm -match 'set\(IFX_VERSION_LABEL "([A-Za-z0-9.]+)"\)') { $version = "$version-$($Matches[1])" }
 $name = "Interference-$version-win64"
 Write-Host "Interference $version"
 
 # ---- optional build + tests -------------------------------------------------------------------
 if ($Build) {
-    Invoke-Native { cmake -S . -B $BuildDir -G "Visual Studio 17 2022" -A x64 }
+    $clapFlag = if ($NoClap) { "-DINTERFERENCE_BUILD_CLAP=OFF" } else { "-DINTERFERENCE_BUILD_CLAP=ON" }
+    Invoke-Native { cmake -S . -B $BuildDir -G "Visual Studio 17 2022" -A x64 $clapFlag }
     if ($LASTEXITCODE -ne 0) { throw "CMake configure failed" }
     Invoke-Native { cmake --build $BuildDir --config Release -- -m:2 }
     if ($LASTEXITCODE -ne 0) { throw "Build failed" }

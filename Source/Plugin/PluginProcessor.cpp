@@ -533,7 +533,7 @@ void InterferenceProcessor::setStateInformation (const void* data, int sizeInByt
 
     applyState (s, false);
     loadedState = s;
-    const auto t = juce::ValueTree::readFromData (data, (size_t) std::max (0, sizeInBytes));
+    const auto t = StateIO::readTree (data, sizeInBytes);
     if (t.isValid())
     {
         if (auto xml = juce::parseXML (t["loadedPreset"].toString()))

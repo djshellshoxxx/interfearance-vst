@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Interference VERSION 1.0.0 LANGUAGES C CXX)
+project(Interference VERSION 0.0.1 LANGUAGES C CXX)
+
+# Pre-release label shown in the UI, state files and release file names ("" for a final release).
+set(IFX_VERSION_LABEL "beta")
+if(IFX_VERSION_LABEL)
+    set(IFX_VERSION_FULL "${PROJECT_VERSION}-${IFX_VERSION_LABEL}")
+else()
+    set(IFX_VERSION_FULL "${PROJECT_VERSION}")
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -56,7 +64,7 @@ set(IFX_DEFS
     JUCE_USE_FLAC=0
     JUCE_USE_OGGVORBIS=0
     JUCE_STRICT_REFCOUNTEDPOINTER=1
-    IFX_VERSION_STRING="${PROJECT_VERSION}"
+    IFX_VERSION_STRING="${IFX_VERSION_FULL}"
 )
 
 # Shared, host-independent sources (no GUI): state, presets, rendering.
@@ -162,6 +170,7 @@ set(IFX_TEST_SOURCES
     Tests/TestStudio.cpp
     Tests/TestPattern.cpp
     Tests/TestState.cpp
+    Tests/TestFuzz.cpp
     Tests/TestRender.cpp
     Tests/TestPerf.cpp
     Tests/TestEnvironment.cpp

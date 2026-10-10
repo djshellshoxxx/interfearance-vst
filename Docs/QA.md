@@ -128,3 +128,25 @@ These could not be exercised unattended on this machine and are **not** claimed:
 8. **Low disk space** while rendering or recording: the write-failure paths exist (bad path and cancel are tested;
    a full disk reports the writer error and drops samples during Record, counted in the popup) but a full disk was not
    simulated.
+
+## Results — 0.0.1 beta (2026-10-10, Linux x64 verification run)
+
+This run verified the code, not the Windows binary. The Windows MSVC build could not be produced in the environment that did
+this work (see *What was not done*).
+
+| Check | Result |
+|---|---|
+| `InterferenceTests` (Linux, GCC 13, Release) | 182 tests, 200 890 checks, 0 failed (3 slow skipped) |
+| `InterferenceGuiTests` (Xvfb) | 18 tests, 444 checks, 0 failed |
+| `InterferenceTests --slow --filter Perf` | pass: CPU gate, cost breakdown (all stages on ≈ 6.6 % of one core at 48 kHz), 1 h offline soak |
+| AddressSanitizer + UBSan (RelWithDebInfo, both suites) | pass; no findings in project code. Two UBSan notes inside JUCE `MemoryBlock` (memcpy with a null pointer and size 0), harmless |
+| New fuzz suite (`Tests/TestFuzz.cpp`) | pass; found and fixed F12 (state loader hang) |
+| Stand-alone smoke run under Xvfb (12 s) | no crash (no audio device in the sandbox, so no sound was heard) |
+| Compiler warnings | GCC with JUCE's recommended flags reports `-Wfloat-equal` / `-Wswitch-enum` / `-Wshadow` noise (about 1 500 lines, same patterns throughout); the MSVC build is the warnings-as-errors reference |
+
+### What was not done
+* **Windows build.** JUCE 8 refuses MinGW (`#error "MinGW is not supported"`), Microsoft's SDK/CRT download hosts returned HTTP 403 from the
+  sandbox (no clang-cl cross-build), and GitHub Actions cannot start jobs for this repository (jobs end in seconds with no steps; the Codex
+  note on PR #1 reports the same on the original master commit). Build on Windows with `tools\make_release.ps1 -Build`.
+* DAW load, pluginval, host soak, real-hardware calibration: still the open gates listed above.
+* CLAP and the Linux VST3 were built and loaded by the test suites' plug-in wrapper only; no CLAP host or `clap-validator` run.

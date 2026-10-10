@@ -15,7 +15,7 @@ research-informed, not measurements of particular devices.
 157 automatable parameters, 27 factory presets in 7 categories, a Studio chain for post-processing clearly labelled
 as such, and offline WAV render.
 
-Version 1.0.0 · VST3 + stand-alone · Windows x64 · 0 samples latency · mono and stereo · 44.1–192 kHz.
+Version 0.0.1 beta · VST3 + CLAP + stand-alone · Windows x64 · 0 samples latency · mono and stereo · 44.1–192 kHz.
 
 ## Documentation
 

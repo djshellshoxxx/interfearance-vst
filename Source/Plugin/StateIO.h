@@ -65,6 +65,11 @@ namespace StateIO
     void toBinary (const PluginState& s, juce::MemoryBlock& dest);
     bool fromBinary (const void* data, int size, PluginState& s, juce::StringArray* warnings = nullptr);
 
+    /** The tree inside a host blob (binary ValueTree or XML), read defensively: counts are checked against the bytes
+        left, depth and node count are bounded, and any inconsistency yields an invalid tree. Use this instead of
+        juce::ValueTree::readFromData for anything that may be damaged (host projects, files). */
+    juce::ValueTree readTree (const void* data, int size);
+
     /** Preset files (.ifxpreset, XML). */
     bool savePresetFile (const PluginState& s, const juce::File& file, juce::String& error);
     bool loadPresetFile (const juce::File& file, PluginState& s, juce::String& error, juce::StringArray* warnings = nullptr);

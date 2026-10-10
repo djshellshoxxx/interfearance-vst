@@ -9,13 +9,6 @@ Interference uses semantic versioning: MAJOR.MINOR.PATCH.
 - **MAJOR**: reserved for a change that cannot load old state identically; a migration step converts old state and
   the change is documented here.
 
-## Unreleased
-
-- Added a CLAP build (clap-juce-extensions, pinned) and a Linux x64 build (VST3, CLAP, stand-alone). CI builds,
-  tests and packages both platforms. Linux QA: 171 DSP + 17 GUI tests pass (GCC 13, Release). The opt-in crash
-  log has a POSIX fatal-signal path (compiled on Linux, not yet covered by an automated test). DAW load and pluginval
-  on Linux/CLAP are not yet verified.
-
 ## Backward-compatibility policy
 
 - Host parameter IDs (`Source/Core/Params.h`) are stable forever once shipped.
@@ -25,11 +18,23 @@ Interference uses semantic versioning: MAJOR.MINOR.PATCH.
 - Seeded randomness (seed, take, bar keying) is part of the sound: a PATCH release never changes the random
   stream of an existing seed.
 
-## Unreleased
+## 0.0.1-beta — 2026-10-10 (first public beta, Windows x64)
+
+Version numbering restarts at 0.0.1 for the beta programme; the 1.0.0 entry below describes the earlier internal build.
 
 - Added per-slot **Solo** controls for quickly auditioning A or B without changing slot contents or resetting source state. Both Solo buttons on keeps both slots audible.
 - Added per-slot **Life** knobs. Life adds deterministic, smooth physical micro-motion through each source's existing gesture model so sounds can evolve continuously while retaining their normal prerequisites and limits.
 - Added engine coverage for solo routing, zero-value compatibility, per-source Life response and block-size independence.
+- Added independent tempo-synced **Gator** (Rate, Depth) for slots A and B, and source-specific trigger hints; loading a source by hand
+  now selects a suitable first gesture. All new parameters are appended and default to off/neutral, so older projects and presets sound the same.
+- Added a **CLAP** plug-in (clap-juce-extensions, pinned commit) alongside VST3 and the stand-alone app.
+- **Fixed (S1/S2): damaged project or preset state could freeze or crash the host.** `juce::ValueTree::readFromData` trusts the counts
+  in the data, so a corrupted state of a few hundred bytes could loop for tens of seconds (measured up to 106 s) or request gigabytes.
+  State is now read by a defensive reader (`StateIO::readTree`) that checks every count against the bytes left and bounds depth and node
+  count. Regression and fuzz tests added (`Tests/TestFuzz.cpp`).
+- **Fixed:** the Solo/Life/Gator slot-card code did not compile (`setTooltip` on `ParamKnob`/`ParamChoice`); those controls keep the tooltips from the parameter table.
+- QA: 182 DSP tests + 18 GUI tests pass (GCC 13 Release, and under AddressSanitizer + UBSan with no findings in project code); performance gate and 1 h
+  offline soak pass. The Windows MSVC build and a DAW session are **not yet verified** for this version (see `Docs/QA.md`).
 
 ## 1.0.0 — 2026-09-23
 
