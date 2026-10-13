@@ -18,6 +18,40 @@ void addWiggles (Harness& h, int n)
 }
 }
 
+IFX_TEST (Engine, slotGatorsAreIndependentAndDefaultOff)
+{
+    auto render = [] (bool gateA, bool gateB, float depth, bool jackInB = false)
+    {
+        Harness h (kFs, 1, 256);
+        h.params = quietParams();
+        h.params[P::mode] = 2.0f;
+        h.params[P::excType] = 4.0f; // continuous test tone through an open jack
+        h.params[P::excLevel] = -20.0f;
+        h.params[P::jkInsert] = 0.0f;
+        h.params[P::gateAOn] = gateA ? 1.0f : 0.0f;
+        h.params[P::gateBOn] = gateB ? 1.0f : 0.0f;
+        h.params[P::gateARate] = h.params[P::gateBRate] = 0.0f; // quarter notes
+        h.params[P::gateADepth] = h.params[P::gateBDepth] = depth;
+        h.setSlots (jackInB ? SourceType::None : SourceType::LooseJack,
+                    jackInB ? SourceType::LooseJack : SourceType::None);
+        return h.runSilence ((int) kFs);
+    };
+
+    const auto original = render (false, false, 1.0f);
+    const auto onlyB = render (false, true, 1.0f);
+    const auto zeroDepth = render (true, false, 0.0f);
+    const auto onlyA = render (true, false, 1.0f);
+    IFX_CHECK (maxAbsDiff (original, onlyB) == 0.0);
+    IFX_CHECK (maxAbsDiff (original, zeroDepth) < 1.0e-6);
+    // At 120 BPM the quarter-note gate is closed from 0.25 to 0.5 s.
+    IFX_CHECK (maxAbsDiff (slice (original, 16000, 2000),
+                            slice (onlyA, 16000, 2000)) > 1.0e-3);
+    const auto baselineB = render (false, false, 1.0f, true);
+    const auto gatedB = render (false, true, 1.0f, true);
+    IFX_CHECK (maxAbsDiff (slice (baselineB, 16000, 2000),
+                            slice (gatedB, 16000, 2000)) > 1.0e-3);
+}
+
 IFX_TEST (Engine, silenceInvariantEverySourcePairModeAndMix)
 {
     // realism spec 2.2: silence in, excitation / bias / touch / mic / hum off => silence out

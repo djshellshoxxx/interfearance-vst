@@ -308,6 +308,10 @@ public:
         const bool link = prm.on (P::linkGesture);
         const float chaos = prm[P::chaos];
         const bool slotOn[2] = { prm.on (P::slotAOn), prm.on (P::slotBOn) };
+        const bool gateOn[2] = { prm.on (P::gateAOn), prm.on (P::gateBOn) };
+        const int gateRate[2] = { prm.choice (P::gateARate), prm.choice (P::gateBRate) };
+        const float gateDepth[2] = { std::clamp (prm[P::gateADepth], 0.0f, 1.0f),
+                                     std::clamp (prm[P::gateBDepth], 0.0f, 1.0f) };
         const float humT = ctx.hum, buzzT = ctx.buzz, rfT = ctx.rf;
         // hidden Ghost Carrier: ring modulation of the wet path by a slowly wandering carrier
         const bool ghostOn = prm.on (P::ghostOn);
@@ -570,23 +574,34 @@ public:
                 for (int ch = 0; ch < nch; ++ch)
                     paths[2][ch] += envInj;
 
+            // Each gate affects only its slot\'s change to the signal.  The base input and
+            // shared environment remain audible when that slot\'s gate is closed.
+            const double gateBeat = (clockRunning ? ppqStart : freeGatePpq) + (double) i / samplesPerBeat;
+            for (int s = 0; s < 2; ++s)
+            {
+                const double cycleBeats = 1.0 / (double) (1 << std::clamp (gateRate[s], 0, 3));
+                const double phase = gateBeat / cycleBeats;
+                const bool open = phase - std::floor (phase) < 0.5;
+                const float target = gateOn[s] && ! open ? 1.0f - gateDepth[s] : 1.0f;
+                gateGain[s] = rampTo (gateGain[s], target);
+            }
             const int order[2] = { effSwap ? 1 : 0, effSwap ? 0 : 1 };
             for (int oi = 0; oi < 2; ++oi)
             {
                 const int s = order[oi];
                 if (src[s] == nullptr || slotMix[s] <= 0.0f)
                     continue;
-                if (slotMix[s] >= 1.0f)
+                if (slotMix[s] >= 1.0f && ! gateOn[s] && gateGain[s] >= 1.0f)
                     src[s]->process (paths, nch, ctx, envScale);
                 else
                 {
-                    float dry[3][2];
-                    std::memcpy (dry, paths, sizeof (dry));
+                    float before[3][2];
+                    std::memcpy (before, paths, sizeof (before));
                     src[s]->process (paths, nch, ctx, envScale);
-                    const float k = slotMix[s];
+                    const float k = slotMix[s] * gateGain[s];
                     for (int pi = 0; pi < 3; ++pi)
                         for (int ch = 0; ch < nch; ++ch)
-                            paths[pi][ch] = dry[pi][ch] + k * (paths[pi][ch] - dry[pi][ch]);
+                            paths[pi][ch] = before[pi][ch] + k * (paths[pi][ch] - before[pi][ch]);
                 }
             }
 
@@ -751,6 +766,7 @@ public:
         }
 
         // ---- clocks --------------------------------------------------------------
+        if (! clockRunning) freeGatePpq += (double) numSamples / samplesPerBeat;
         lastPpqEnd = ppqEnd;
         if (internalRunning) internalPpq += numSamples / samplesPerBeat;
         if (oneShotActive)
@@ -1067,6 +1083,8 @@ private:
         softReset (hostSeconds, reason);
         studio.reset();
         snapGains = true;
+        gateGain[0] = gateGain[1] = 1.0f;
+        freeGatePpq = 0.0;
         for (auto& b : passive) b.reset();
         for (auto& row : preSat) for (auto& s : row) s.reset();
         excPhase = 0.0;
@@ -1136,6 +1154,8 @@ private:
     float smoothCoeff = 0.99f, slowCoeff = 0.999f, rampStep = 0.002f;
     float trim = 1.0f, excGain = 0.0f, studioMix = 0.0f, rawMix = 0.0f, bypassMix = 0.0f, ceilGain = 1.0f;
     float slotMix[2] { 1.0f, 1.0f };
+    float gateGain[2] { 1.0f, 1.0f };
+    double freeGatePpq = 0.0;
     float ghostRamp = 0.0f;
     float glPrev = 0.0f, glLeakS = 0.0f, glVdS = 0.0f, glRloopS = 1.0f, glG0S = 1.0f, glDiffKS = 0.0f, gsmLevelS = 0.0f;
     // smoothed block targets and switch crossfades

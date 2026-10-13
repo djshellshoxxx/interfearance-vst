@@ -175,7 +175,14 @@ X(dimBright,   "dim_bright",  "Dimmer",            F, 0, 1, 0.5f, 0, "%", "", "L
 X(dimKind,     "dim_kind",    "Dimmer Kind",       C, 0, 2, 0, 0, "", "Cheap Wall|Stage|TV Studio", "Switching rise time: cheap wall dimmers switch in microseconds (harsh); stage and studio dimmers use chokes (softer, darker).") \
 X(gsm,         "gsm",         "2G Phone",          C, 0, 3, 0, 0, "", "Away|Check-in|Incoming|In Call", "A 2G (GSM) phone near the rig: its 217 Hz TDMA bursts are detected by the audio circuit. The rhythm is physical; the state decides when bursts happen.") \
 X(gsmDist,     "gsm_dist",    "Phone Distance",    F, 0.1f, 2, 0.5f, 1, "m", "", "Distance of the phone from the gear. Detected interference falls steeply with distance.") \
-X(rfType,      "rf_type",     "Transmitter",       C, 0, 2, 1, 0, "", "AM Station|Two-Way Radio|Motor Sparks", "What the Interference amount picks up: a distant AM station, keyed two-way radio bursts, or commutator sparks from a motor. Detected by the audio circuit (square law), so a little less RF is a lot less noise.")
+X(rfType,      "rf_type",     "Transmitter",       C, 0, 2, 1, 0, "", "AM Station|Two-Way Radio|Motor Sparks", "What the Interference amount picks up: a distant AM station, keyed two-way radio bursts, or commutator sparks from a motor. Detected by the audio circuit (square law), so a little less RF is a lot less noise.") \
+/* --- independent slot gators (appended; existing IDs stay stable) --- */ \
+X(gateAOn,     "gateA_on",    "Slot A Gator",       B, 0, 1, 0, 0, "", "", "Tempo-synced gator on slot A faults. Off keeps the original sound.") \
+X(gateARate,   "gateA_rate",  "Slot A Gate Rate",   C, 0, 3, 2, 0, "", "1/4|1/8|1/16|1/32", "Duration of one open/closed cycle for slot A, synced to the host or internal BPM.") \
+X(gateADepth,  "gateA_depth", "Slot A Gate Depth", F, 0, 1, 1, 0, "%", "", "How much slot A faults are cut during the closed half of the gate.") \
+X(gateBOn,     "gateB_on",    "Slot B Gator",       B, 0, 1, 0, 0, "", "", "Tempo-synced gator on slot B faults. Off keeps the original sound.") \
+X(gateBRate,   "gateB_rate",  "Slot B Gate Rate",   C, 0, 3, 2, 0, "", "1/4|1/8|1/16|1/32", "Duration of one open/closed cycle for slot B, synced to the host or internal BPM.") \
+X(gateBDepth,  "gateB_depth", "Slot B Gate Depth", F, 0, 1, 1, 0, "%", "", "How much slot B faults are cut during the closed half of the gate.")
 
 enum P : int
 {
