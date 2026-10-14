@@ -261,6 +261,10 @@ IFX_TEST (Host, slotRulesNeverDuplicate)
     p.setSlots (SourceType::DirtyPot, SourceType::PlugTouch);
     p.setSlotSource (0, SourceType::PlugTouch); // move B's source to A: they swap
     IFX_CHECK (p.slotType (0) == SourceType::PlugTouch && p.slotType (1) == SourceType::DirtyPot);
+    IFX_CLOSE (p.apvts.getRawParameterValue ("slotA_gest")->load(), (float) GestureKind::TouchRelease, 1e-4f);
+    IFX_CLOSE (p.apvts.getRawParameterValue ("slotB_gest")->load(), (float) GestureKind::SlowTurn, 1e-4f);
+    p.setSlotSource (1, SourceType::CableHandling);
+    IFX_CLOSE (p.apvts.getRawParameterValue ("slotB_gest")->load(), (float) GestureKind::Shake, 1e-4f);
 }
 
 IFX_TEST (Host, resetRandomizeAndAB)
@@ -883,4 +887,44 @@ IFX_TEST (Gui, focusChainHasTitlesAndParameterTooltips)
     IFX_CHECK (checked > 20);
     IFX_CHECK_MSG (untitled.isEmpty(), juce::String (untitled.size()) + " focusable controls without a title: " + untitled.joinIntoString ("; "));
     IFX_CHECK_MSG (noTooltip.isEmpty(), juce::String (noTooltip.size()) + " parameter controls without a tooltip: " + noTooltip.joinIntoString ("; "));
+}
+
+
+IFX_TEST (Gui, slotCardsExposeSoloAndLifeAtMinimumSize)
+{
+    Rig r;
+    std::unique_ptr<juce::AudioProcessorEditor> ed (r.proc->createEditor());
+    auto* e = dynamic_cast<InterferenceEditor*> (ed.get());
+    IFX_CHECK (e != nullptr);
+    if (e == nullptr) return;
+
+    e->setSize (InterferenceEditor::kMinW, InterferenceEditor::kMinH);
+    pump (30);
+
+    int soloCount = 0, lifeCount = 0;
+    bool controlsInside = true;
+    std::function<void (juce::Component&)> scan = [&] (juce::Component& parent)
+    {
+        for (auto* child : parent.getChildren())
+        {
+            if (auto* t = dynamic_cast<ParamToggle*> (child))
+                if (t->getParamIndex() == P::slotASolo || t->getParamIndex() == P::slotBSolo)
+                {
+                    ++soloCount;
+                    controlsInside &= parent.getLocalBounds().contains (t->getBounds());
+                }
+            if (auto* k = dynamic_cast<ParamKnob*> (child))
+                if (k->getParamIndex() == P::slotALife || k->getParamIndex() == P::slotBLife)
+                {
+                    ++lifeCount;
+                    controlsInside &= parent.getLocalBounds().contains (k->getBounds());
+                }
+            scan (*child);
+        }
+    };
+    scan (*e);
+
+    IFX_CHECK (soloCount == 2);
+    IFX_CHECK (lifeCount == 2);
+    IFX_CHECK (controlsInside);
 }

@@ -59,10 +59,16 @@ A short chronological log. Commit hashes refer to `git log`. The detailed task l
   final status: 456 of 498 requirement rows implemented; the rest are documented deviations, release gates or
   assigned polish.
 
+## Session 5 — 2026-10-06
+- Continued the slot-trigger/gator feature line on `codex/dynamic-life-and-solo` rather than writing over diverged `master`.
+- Added `Docs/DynamicLifeAndSoloSpec.md` before implementation.
+- Added per-slot **Solo** for fast source auditioning. Soloed-out hardware keeps advancing internally; its audible contribution, pickup coupling and ground-loop interaction fade out through the existing declick path. Both Solo buttons on means both slots play.
+- Added per-slot **Life**, a 0–100% deterministic micro-motion macro. It drives the existing physical `GestureOut` path with independent slow motion per slot; it does not generate generic output modulation or bypass source prerequisites.
+- Added DSP tests for Solo routing, both-solo equivalence, zero-Life compatibility, all-source Life response and block-size independence, plus GUI and old-state migration coverage.
+- Updated generated parameter reference, manual and changelog.
+- GitHub Actions currently fails within seconds on both this branch and current `master`; CI infrastructure therefore remains an external verification blocker for this pass.
+
 ## Where to resume
-1. `TODO.md`, section "Remaining": integrate any outstanding agent work, full build, all tests. Then pluginval
-   strictness 10, `tools/make_release.ps1`, and record both results in `Docs/QA.md`.
-2. `Docs/QA.md`, section "Unverified release gates": DAW load in FL Studio, a real-time host soak and memory check,
-   sidechain in a host, empirical calibration, publisher items (homepage, support e-mail, licences, signing
-   certificate), the sanitizer build, and other platforms.
-3. `Docs/research/SpecAudit.md` section 12: the remaining (d) items and who owns them.
+1. Restore a working CI run and execute the normal Windows build plus DSP/GUI suites for the new Solo/Life commits.
+2. Reconcile `codex/dynamic-life-and-solo` with the seven newer `master` commits before merge; the branches currently diverge.
+3. Keep `TODO.md` as the release-gate source of truth. Its implementation list is complete; remaining work is external validation/publisher work plus verification of this new feature branch.

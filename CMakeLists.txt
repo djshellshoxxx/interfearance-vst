@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Interference VERSION 1.0.0 LANGUAGES C CXX)
+project(Interference VERSION 0.0.1 LANGUAGES C CXX)
+
+# Pre-release label shown in the UI, state files and release file names ("" for a final release).
+set(IFX_VERSION_LABEL "beta")
+if(IFX_VERSION_LABEL)
+    set(IFX_VERSION_FULL "${PROJECT_VERSION}-${IFX_VERSION_LABEL}")
+else()
+    set(IFX_VERSION_FULL "${PROJECT_VERSION}")
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,6 +42,20 @@ else()
     FetchContent_MakeAvailable(juce)
 endif()
 
+# CLAP format via clap-juce-extensions (pinned commit; a ./clap-juce-extensions checkout is used if present).
+option(INTERFERENCE_BUILD_CLAP "Also build a CLAP plug-in" ON)
+if(INTERFERENCE_BUILD_CLAP)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/clap-juce-extensions/CMakeLists.txt")
+        add_subdirectory(clap-juce-extensions EXCLUDE_FROM_ALL)
+    else()
+        include(FetchContent)
+        FetchContent_Declare(clap_juce_extensions
+            GIT_REPOSITORY https://github.com/free-audio/clap-juce-extensions.git
+            GIT_TAG 7adee3a1bd4684d4caa5601100e364abccff4b4d)
+        FetchContent_MakeAvailable(clap_juce_extensions)
+    endif()
+endif()
+
 set(IFX_DEFS
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
@@ -42,7 +64,7 @@ set(IFX_DEFS
     JUCE_USE_FLAC=0
     JUCE_USE_OGGVORBIS=0
     JUCE_STRICT_REFCOUNTEDPOINTER=1
-    IFX_VERSION_STRING="${PROJECT_VERSION}"
+    IFX_VERSION_STRING="${IFX_VERSION_FULL}"
 )
 
 # Shared, host-independent sources (no GUI): state, presets, rendering.
@@ -126,6 +148,12 @@ if(IFX_HAVE_PLUGIN)
     target_link_libraries(Interference PRIVATE ${IFX_MODULES}
         PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
     juce_generate_juce_header(Interference)
+    if(INTERFERENCE_BUILD_CLAP)
+        clap_juce_extensions_plugin(TARGET Interference
+            CLAP_ID "audio.interference.interference"
+            CLAP_FEATURES audio-effect distortion
+            CLAP_PROCESS_EVENTS_RESOLUTION_SAMPLES 64)
+    endif()
     target_compile_definitions(Interference PUBLIC ${IFX_DEFS}
         JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_MODAL_LOOPS_PERMITTED=0)
 endif()
@@ -142,6 +170,7 @@ set(IFX_TEST_SOURCES
     Tests/TestStudio.cpp
     Tests/TestPattern.cpp
     Tests/TestState.cpp
+    Tests/TestFuzz.cpp
     Tests/TestRender.cpp
     Tests/TestPerf.cpp
     Tests/TestEnvironment.cpp

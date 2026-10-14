@@ -67,9 +67,14 @@ juce::String explainQuiet (InterferenceProcessor& proc, int slot, const SlotView
 SlotCard::SlotCard (InterferenceProcessor& p, int s)
     : proc (p), slot (s),
       enable (p, s == 0 ? P::slotAOn : P::slotBOn, "On"),
+      solo (p, s == 0 ? P::slotASolo : P::slotBSolo, "Solo"),
       gesture (p, s == 0 ? P::gestureA : P::gestureB),
       level (p, s == 0 ? P::slotALevel : P::slotBLevel, ParamKnob::Style::SmallKnob, "Disturb"),
-      trigger (p, s == 0 ? P::trigA : P::trigB, "Play")
+      life (p, s == 0 ? P::slotALife : P::slotBLife, ParamKnob::Style::SmallKnob, "Life"),
+      trigger (p, s == 0 ? P::trigA : P::trigB, "Trigger"),
+      gate (p, s == 0 ? P::gateAOn : P::gateBOn, "Gator"),
+      gateRate (p, s == 0 ? P::gateARate : P::gateBRate),
+      gateDepth (p, s == 0 ? P::gateADepth : P::gateBDepth, ParamKnob::Style::SmallKnob, "Depth")
 {
     sourceBox.addItem ("Empty", 1);
     for (int i = 1; i <= kNumSourceTypes; ++i)
@@ -83,11 +88,23 @@ SlotCard::SlotCard (InterferenceProcessor& p, int s)
     };
     addAndMakeVisible (sourceBox);
     addAndMakeVisible (enable);
+    addAndMakeVisible (solo);
     addAndMakeVisible (gesture);
     addAndMakeVisible (level);
+    addAndMakeVisible (life);
     addAndMakeVisible (trigger);
     addAndMakeVisible (why);
     addAndMakeVisible (meter);
+    triggerHint.setFont (Theme::bodyFont (11.0f));
+    triggerHint.setColour (juce::Label::textColourId, Theme::accent);
+    triggerHint.setJustificationType (juce::Justification::centredLeft);
+    triggerHint.setMinimumHorizontalScale (0.7f);
+    addAndMakeVisible (triggerHint);
+    addAndMakeVisible (gate);
+    addAndMakeVisible (gateRate);
+    addAndMakeVisible (gateDepth);
+    solo.setTooltip ("Hear this slot without the other slot. If both Solo buttons are on, both slots play.");
+    gate.setTooltip ("Switch this slot's rhythmic fault gator on or off. It runs at host BPM, or internal BPM without transport.");
     trigger.setTooltip (juce::String ("Play this slot's gesture now (hold to sustain gestures that last until release).\n"
                                       "Right-click: MIDI learn, reset or type a value for ") + paramInfo (s == 0 ? P::trigA : P::trigB).name + ".");
     trigger.setTitle (juce::String ("Play slot ") + (s == 0 ? "A" : "B"));
@@ -145,6 +162,24 @@ void SlotCard::refresh (const SlotView& v, bool sel)
     const bool empty = proc.slotType (slot) == SourceType::None;
     trigger.setEnabled (! empty);
     gesture.setEnabled (! empty);
+    solo.setEnabled (! empty);
+    life.setEnabled (! empty);
+    gate.setEnabled (! empty);
+    gateRate.setEnabled (! empty);
+    gateDepth.setEnabled (! empty);
+    const bool silent = proc.telemetry().inPeak.load() < 1.0e-5f
+                     && rawValue (proc, P::excType) < 0.5f;
+    juce::String hint;
+    switch (proc.slotType (slot))
+    {
+        case SourceType::LooseJack:     hint = "Move Plug into wear, then Trigger"; break;
+        case SourceType::PlugTouch:     hint = "Raise Hum, then touch / Trigger"; break;
+        case SourceType::CableHandling: hint = "Raise Mic, then shake / Trigger"; break;
+        case SourceType::DirtyPot:      hint = "Raise Dirt, then turn / Trigger"; break;
+        default:                        hint = "Choose a source above"; break;
+    }
+    triggerHint.setText (hint, juce::dontSendNotification);
+    triggerHint.setTooltip (hint + (silent ? "\nSilent input: use Create > Excitation or play audio for signal-dependent sounds." : ""));
     if (sel != selected) { selected = sel; }
     repaint();
 }
@@ -180,21 +215,30 @@ void SlotCard::resized()
     auto row1 = r.removeFromTop (22);
     row1.removeFromLeft (30);
     enable.setBounds (row1.removeFromRight (40));
-    row1.removeFromRight (6);
+    row1.removeFromRight (4);
+    solo.setBounds (row1.removeFromRight (48));
+    row1.removeFromRight (4);
     sourceBox.setBounds (row1);
     r.removeFromTop (4);
     causeArea = r.removeFromTop (28);
     r.removeFromTop (2);
     meter.setBounds (r.removeFromTop (14));
     r.removeFromTop (4);
+    triggerHint.setBounds (r.removeFromTop (18));
     auto row3 = r.removeFromTop (std::min (48, r.getHeight()));
-    level.setBounds (row3.removeFromRight (52));
+    life.setBounds (row3.removeFromRight (48));
+    row3.removeFromRight (2);
+    level.setBounds (row3.removeFromRight (48));
     row3.removeFromRight (4);
     auto btns = row3.removeFromRight (78);
     trigger.setBounds (btns.removeFromTop (btns.getHeight() / 2).reduced (0, 1));
     why.setBounds (btns.reduced (0, 1));
     row3.removeFromRight (6);
     gesture.setBounds (row3.withSizeKeepingCentre (row3.getWidth(), 26));
+    auto gateRow = r.removeFromTop (30);
+    gate.setBounds (gateRow.removeFromLeft (70).reduced (0, 2));
+    gateDepth.setBounds (gateRow.removeFromRight (66));
+    gateRate.setBounds (gateRow.reduced (2, 2));
 }
 
 //==============================================================================

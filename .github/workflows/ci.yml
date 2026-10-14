@@ -122,6 +122,7 @@ jobs:
           path: |
             build/Interference_artefacts/Release/VST3/
             build/Interference_artefacts/Release/Standalone/Interference.exe
+            build/Interference_artefacts/Release/CLAP/Interference.clap
           if-no-files-found: error
 
       # every CI build is unsigned; IFX_SIGNED_BY is left unset, so make_release.ps1 writes an UNSIGNED SIGNATURE.txt
@@ -138,6 +139,43 @@ jobs:
           path: |
             dist/*.zip
             dist/*.sha256
+          if-no-files-found: error
+
+  linux:
+    name: Linux x64 build, tests (VST3, CLAP, Standalone)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      IFX_DATA_ROOT: ${{ github.workspace }}/ci-data
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build xvfb libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev \
+            libxext-dev libxrandr-dev libxinerama-dev libxcursor-dev libgl1-mesa-dev
+      - name: Fetch JUCE ${{ env.JUCE_TAG }}
+        run: git clone --depth 1 --branch $JUCE_TAG https://github.com/juce-framework/JUCE.git JUCE
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+      - name: Tests
+        run: |
+          mkdir -p "$IFX_DATA_ROOT"
+          build/InterferenceTests_artefacts/Release/InterferenceTests
+          xvfb-run -a build/InterferenceGuiTests_artefacts/Release/InterferenceGuiTests
+      - name: Package
+        run: |
+          mkdir -p dist/Interference-linux-x64
+          cp -r build/Interference_artefacts/Release/VST3/Interference.vst3 build/Interference_artefacts/Release/CLAP/Interference.clap \
+            build/Interference_artefacts/Release/Standalone/Interference LICENSE THIRD_PARTY.md dist/Interference-linux-x64/
+          tar -C dist -czf dist/Interference-linux-x64.tar.gz Interference-linux-x64
+          (cd dist && sha256sum Interference-linux-x64.tar.gz > Interference-linux-x64.tar.gz.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: interference-linux-x64
+          path: dist/*.tar.gz*
           if-no-files-found: error
 
   release:

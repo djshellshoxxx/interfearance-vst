@@ -14,10 +14,11 @@ binaries are code-signed, and by whom.
 ## Install (Windows)
 
 1. Windows may block files from a downloaded ZIP. Right-click the ZIP, choose Properties, tick *Unblock*, then OK.
-   Then unzip `Interference-1.0.0-win64.zip`.
+   Then unzip `Interference-0.0.1-beta-win64.zip`.
 2. Copy the **folder** `Interference.vst3` to `C:\Program Files\Common Files\VST3\` (administrator rights needed).
    Copy the whole bundle folder, not just the DLL inside it.
 3. Start your DAW and rescan plug-ins. Interference appears as an audio effect by *Interference Audio*.
+3b. Optional CLAP: copy `Interference.clap` to `C:\Program Files\Common Files\CLAP\`.
 4. Optional: put `Interference.exe` (stand-alone) anywhere, for example `C:\Program Files\Interference\`. Its
    Options page chooses the audio interface and MIDI inputs.
 

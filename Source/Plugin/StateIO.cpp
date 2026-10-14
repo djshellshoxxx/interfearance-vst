@@ -265,21 +265,118 @@ void toBinary (const PluginState& s, juce::MemoryBlock& dest)
     toValueTree (s).writeToStream (mo);
 }
 
-bool fromBinary (const void* data, int size, PluginState& s, juce::StringArray* warnings)
+namespace
+{
+    // juce::ValueTree::readFromData trusts the counts in the data: a few hundred damaged bytes can declare billions of
+    // properties (a loop of tens of seconds, a frozen host), or a multi-gigabyte array/binary/children allocation.
+    // This reader accepts exactly the format ValueTree::writeToStream produces, but checks every count against the
+    // bytes that are actually left, limits depth and node count, and rejects the whole blob on the first inconsistency.
+    constexpr int kMaxDepth = 32;
+    constexpr int kMaxNodes = 20000;
+    enum VarMarker : int { mInt = 1, mBoolTrue = 2, mBoolFalse = 3, mDouble = 4, mString = 5, mInt64 = 6, mArray = 7, mBinary = 8 };
+
+    bool readVarSafe (juce::MemoryInputStream& in, juce::var& out)
+    {
+        const int numBytes = in.readCompressedInt();
+        if (numBytes < 0 || (juce::int64) numBytes > in.getNumBytesRemaining())
+            return false;
+        if (numBytes == 0)
+        {
+            out = juce::var();
+            return true;
+        }
+        const juce::int64 start = in.getPosition();
+        const int marker = in.readByte();
+        const int payload = numBytes - 1;
+        switch (marker)
+        {
+            case mInt:       if (payload < 4) return false; out = juce::var (in.readInt());    break;
+            case mInt64:     if (payload < 8) return false; out = juce::var (in.readInt64());  break;
+            case mDouble:    if (payload < 8) return false; out = juce::var (in.readDouble()); break;
+            case mBoolTrue:  out = juce::var (true);  break;
+            case mBoolFalse: out = juce::var (false); break;
+            case mString:
+            {
+                juce::MemoryBlock mb ((size_t) payload);
+                if (payload > 0 && in.read (mb.getData(), payload) != payload)
+                    return false;
+                out = juce::var (juce::String::fromUTF8 (static_cast<const char*> (mb.getData()), payload));
+                break;
+            }
+            default: // arrays, binaries and unknown markers never occur in an Interference state: skip their bytes
+                in.setPosition (start + numBytes);
+                out = juce::var();
+                return true;
+        }
+        in.setPosition (start + numBytes);
+        return true;
+    }
+
+    bool readTreeSafe (juce::MemoryInputStream& in, juce::ValueTree& out, int depth, int& nodes)
+    {
+        if (depth > kMaxDepth || ++nodes > kMaxNodes || in.isExhausted())
+            return false;
+        const auto type = in.readString();
+        if (type.isEmpty())
+            return false;
+        juce::ValueTree v { juce::Identifier (type) };
+
+        const int numProps = in.readCompressedInt();
+        if (numProps < 0 || (juce::int64) numProps * 2 > in.getNumBytesRemaining())
+            return false;
+        for (int i = 0; i < numProps; ++i)
+        {
+            const auto name = in.readString();
+            juce::var val;
+            if (name.isEmpty() || ! readVarSafe (in, val))
+                return false;
+            v.setProperty (juce::Identifier (name), val, nullptr);
+        }
+
+        const int numChildren = in.readCompressedInt();
+        if (numChildren < 0 || (juce::int64) numChildren * 3 > in.getNumBytesRemaining())
+            return false;
+        for (int i = 0; i < numChildren; ++i)
+        {
+            juce::ValueTree child;
+            if (! readTreeSafe (in, child, depth + 1, nodes))
+                return false;
+            v.appendChild (child, nullptr);
+        }
+        out = v;
+        return true;
+    }
+
+    juce::ValueTree readBinaryTreeSafe (const void* data, int size)
+    {
+        juce::MemoryInputStream in (data, (size_t) size, false);
+        juce::ValueTree t;
+        int nodes = 0;
+        return readTreeSafe (in, t, 0, nodes) ? t : juce::ValueTree();
+    }
+}
+
+juce::ValueTree readTree (const void* data, int size)
 {
     if (data == nullptr || size <= 0)
-        return false;
+        return {};
     const auto* c = static_cast<const char*> (data);
     if (c[0] != '<')
     {
-        const auto t = juce::ValueTree::readFromData (data, (size_t) size);
-        if (t.isValid() && fromValueTree (t, s, warnings))
-            return true;
+        const auto t = readBinaryTreeSafe (data, size);
+        if (t.isValid())
+            return t;
     }
     // tolerate an XML blob (hand-edited or from a text-based host)
     if (auto xml = juce::parseXML (juce::String::fromUTF8 ((const char*) data, size)))
-        return fromValueTree (juce::ValueTree::fromXml (*xml), s, warnings);
-    return false;
+        return juce::ValueTree::fromXml (*xml);
+    return {};
+}
+
+bool fromBinary (const void* data, int size, PluginState& s, juce::StringArray* warnings)
+{
+    const auto t = readTree (data, size);
+    return t.isValid() && fromValueTree (t, s, warnings);
 }
 
 bool savePresetFile (const PluginState& s, const juce::File& file, juce::String& error)
