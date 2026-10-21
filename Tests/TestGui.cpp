@@ -45,6 +45,15 @@ void pump (int ms = 60)
     juce::MessageManager::getInstance()->runDispatchLoopUntil (ms);
 }
 
+/** Pump the message loop until `done()` holds or `timeoutMs` passes (timer cadence varies by platform and load). */
+template <typename Fn>
+bool pumpUntil (Fn&& done, int timeoutMs = 3000)
+{
+    for (int waited = 0; waited < timeoutMs && ! done(); waited += 20)
+        pump (20);
+    return done();
+}
+
 void saveSnapshot (juce::Component& c, const juce::String& name)
 {
     const auto img = c.createComponentSnapshot (c.getLocalBounds(), true, 1.0f);
@@ -244,12 +253,12 @@ IFX_TEST (Host, midiNotesTriggerGesturesAndCcLearn)
     juce::MidiBuffer cc;
     cc.addEvent (juce::MidiMessage::controllerEvent (2, 20, 64), 0);
     r.proc->processBlock (b, cc);
-    pump (120); // the processor's timer applies it on the message thread
-    IFX_CHECK (r.proc->describeMidiMapping (P::jkWiggle).contains ("CC 20"));
+    // the processor's timer applies it on the message thread
+    IFX_CHECK (pumpUntil ([&] { return r.proc->describeMidiMapping (P::jkWiggle).contains ("CC 20"); }));
     juce::MidiBuffer cc2;
     cc2.addEvent (juce::MidiMessage::controllerEvent (2, 20, 127), 0);
     r.proc->processBlock (b, cc2);
-    pump (120);
+    pumpUntil ([&] { return r.proc->apvts.getRawParameterValue ("jk_wiggle")->load() > 0.999f; });
     IFX_CLOSE (r.proc->apvts.getRawParameterValue ("jk_wiggle")->load(), 1.0f, 1e-4f);
 }
 
