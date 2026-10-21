@@ -24,6 +24,10 @@ on:
         description: "Also run the slow tests (CPU benchmark + 1 h offline soak)"
         type: boolean
         default: true
+      release_tag:
+        description: "Publish a GitHub Release with this tag (e.g. v1.1.0-beta.1) from the selected commit; empty = no release"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -145,7 +149,7 @@ jobs:
   release:
     name: Signed release ZIP (v* tags only)
     needs: [checks, build]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
     permissions:
       contents: write
     runs-on: windows-2022
@@ -310,7 +314,7 @@ jobs:
   publish:
     name: Publish GitHub Release
     needs: [release, build-unix]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -343,8 +347,10 @@ jobs:
           > Open, or run `xattr -dr com.apple.quarantine` on the bundle.
           EOF
           flags=""
-          case "$GITHUB_REF_NAME" in *-alpha*|*-beta*|*-rc*) flags="--prerelease";; esac
-          gh release create "$GITHUB_REF_NAME" assets/* --verify-tag --title "Interference $GITHUB_REF_NAME" --notes-file notes.md $flags
+          tag="${{ inputs.release_tag }}"
+          if [ -z "$tag" ]; then tag="$GITHUB_REF_NAME"; flags="--verify-tag"; else flags="--target $GITHUB_SHA"; fi
+          case "$tag" in *-alpha*|*-beta*|*-rc*) flags="$flags --prerelease";; esac
+          gh release create "$tag" assets/* --title "Interference $tag" --notes-file notes.md $flags
 
   slow:
     name: Slow tests (CPU benchmark + 1 h offline soak)
