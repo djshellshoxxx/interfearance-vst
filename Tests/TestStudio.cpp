@@ -259,3 +259,21 @@ IFX_TEST (Studio, autoMatchIsBounded)
     IFX_CHECK (allFinite (out));
     IFX_CHECK (peakOf (out) < 4.0f);
 }
+
+IFX_TEST (Studio, scaleSnapKeepsNotesInKey)
+{
+    // C major: 61 (C#) snaps to 60 or 62; every result is a scale member for all keys and scales
+    for (int scale = 0; scale < Scale::kNumScales; ++scale)
+        for (int key = 0; key < 12; ++key)
+            for (double m = 30.0; m < 100.0; m += 0.37)
+            {
+                const int n = Scale::snapMidi (m, key, scale);
+                IFX_CHECK (Scale::mask (scale)[(size_t) (((n - key) % 12 + 12) % 12)]);
+                IFX_CHECK (std::abs (n - m) <= 3.0);
+            }
+    IFX_CHECK (Scale::snapMidi (60.0, 0, 1) == 60);
+    IFX_CHECK (Scale::snapMidi (61.2, 0, 1) == 62);
+    IFX_CHECK (Scale::snapMidi (60.9, 0, 5) == 62 || Scale::snapMidi (60.9, 0, 5) == 60);
+    IFX_CHECK (std::abs (Scale::snapHz (445.0, 9, 1) - 440.0) < 1e-6); // A in A major stays A
+    IFX_CHECK (Scale::snapHz (0.0, 0, 1) == 0.0);
+}

@@ -7,6 +7,8 @@
 #             UNSIGNED release ZIP + SHA-256 and the built binaries uploaded as artifacts
 #   release   (windows, v* tags only, protected environment "release"): signs the binaries from `build` with the
 #             release certificate (when configured), writes SIGNATURE.txt via make_release.ps1, uploads the ZIP
+#   build-unix (linux + macOS, every push / PR): native build, both test suites, archive + SHA-256
+#   publish   (v* tags only): one GitHub Release with the Windows, Linux and macOS archives
 #   slow      (windows, manual "Run workflow" only): the slow suite (CPU benchmark + 1 h offline soak)
 #
 # Runner images are pinned (windows-2022 ships Visual Studio 2022, which the generator below names); bump deliberately.
@@ -222,26 +224,127 @@ jobs:
             dist/*.sha256
           if-no-files-found: error
 
-      - name: Publish GitHub Release
-        shell: pwsh
+  # ---- Linux and macOS: native build + tests + archive (every push) ----------------------------------------------
+  build-unix:
+    name: ${{ matrix.name }} build, tests and archive
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Linux x64, plat: linux, os: ubuntu-22.04 }
+          - { name: macOS universal, plat: macos, os: macos-14 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      IFX_DATA_ROOT: ${{ github.workspace }}/ci-data
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache JUCE ${{ env.JUCE_TAG }}
+        id: juce-cache
+        uses: actions/cache@v4
+        with:
+          path: JUCE
+          key: juce-${{ env.JUCE_TAG }}-${{ matrix.os }}
+
+      - name: Fetch JUCE ${{ env.JUCE_TAG }}
+        if: steps.juce-cache.outputs.cache-hit != 'true'
+        run: git clone --depth 1 --branch "$JUCE_TAG" https://github.com/juce-framework/JUCE.git JUCE
+
+      - name: Linux dependencies
+        if: matrix.plat == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build libasound2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libgl1-mesa-dev xvfb
+
+      - name: Configure
+        run: |
+          extra=""
+          if [ "${{ matrix.plat }}" = "macos" ]; then
+            extra="-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15"
+          fi
+          # warnings-as-errors stays Windows-only: GCC/Clang -Wfloat-equal etc. in JUCE recommended flags are noisy
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release $extra
+
+      - name: Build Release
+        run: cmake --build build --parallel
+
+      - name: DSP / state / render tests
+        run: |
+          mkdir -p "$IFX_DATA_ROOT"
+          ./build/InterferenceTests_artefacts/Release/InterferenceTests
+
+      - name: Host contract and GUI tests
+        run: |
+          mkdir -p "$IFX_DATA_ROOT"
+          if [ "${{ matrix.plat }}" = "linux" ]; then
+            xvfb-run -a ./build/InterferenceGuiTests_artefacts/Release/InterferenceGuiTests
+          else
+            ./build/InterferenceGuiTests_artefacts/Release/InterferenceGuiTests
+          fi
+
+      - name: Ad-hoc sign (macOS; lets Apple Silicon load the bundles; not notarised)
+        if: matrix.plat == 'macos'
+        run: |
+          for b in build/Interference_artefacts/Release/VST3/Interference.vst3 \
+                   build/Interference_artefacts/Release/AU/Interference.component \
+                   build/Interference_artefacts/Release/Standalone/Interference.app; do
+            codesign --force --deep -s - "$b"
+          done
+
+      - name: Archive + SHA-256
+        run: python3 tools/package_release.py ${{ matrix.plat }} build
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: interference-${{ matrix.plat }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  # ---- v* tags: one GitHub Release with the Windows, Linux and macOS archives ------------------------------------
+  publish:
+    name: Publish GitHub Release
+    needs: [release, build-unix]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: interference-*
+          path: assets
+          merge-multiple: true
+
+      - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $assets = @(Get-ChildItem -LiteralPath dist -File | Where-Object { $_.Extension -in @('.zip', '.sha256') })
-          if ($assets.Count -ne 2) { throw "Expected one release ZIP and one SHA-256 file, found $($assets.Count) assets." }
-          $notes = @'
-          Windows x64 beta release of Interference.
+          ls -l assets
+          n=$(ls assets | wc -l)
+          [ "$n" -eq 6 ] || { echo "::error::expected 3 archives + 3 checksums, found $n files"; exit 1; }
+          cat > notes.md <<'EOF'
+          Interference for Windows x64, Linux x64 and macOS (universal arm64 + x86_64). Each archive holds the plug-in
+          (VST3; AU on macOS), the stand-alone app, user documentation, third-party licence texts and a `SIGNATURE.txt`
+          stating the signing status. Verify downloads with the matching `.sha256` file.
 
-          The ZIP contains the VST3 plug-in, stand-alone app, user documentation, third-party licence texts, and a SHA-256 checksum. Check `SIGNATURE.txt` inside the ZIP for the binary signing status.
-
-          The automated Windows build, DSP/state/render tests, and GUI/host-contract tests passed for this tag. DAW loading, real-time host soak, sidechain behavior in a host, empirical calibration, publisher licensing, and code-signing remain unverified release gates; see `Docs/QA.md` in the archive.
-          '@
-          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
-          Set-Content -LiteralPath $notesPath -Value $notes -Encoding utf8
-          $ghArgs = @('release', 'create', $env:GITHUB_REF_NAME) + @($assets | ForEach-Object { $_.FullName }) + @('--verify-tag', '--title', "Interference $env:GITHUB_REF_NAME — Windows x64", '--notes-file', $notesPath)
-          if ($env:GITHUB_REF_NAME -match '-(alpha|beta|rc)(\.|$)') { $ghArgs += '--prerelease' }
-          & gh @ghArgs
-          if ($LASTEXITCODE -ne 0) { throw "GitHub Release publication failed (exit $LASTEXITCODE)" }
+          Automated build, DSP/state/render tests and GUI/host-contract tests passed on every platform for this tag.
+          Linux and macOS builds were exercised headlessly only; DAW loading, real-time host soak, sidechain behaviour
+          in a host, empirical calibration, publisher licensing, code-signing and macOS notarisation remain unverified
+          release gates (see `Docs/QA.md` in the archive). The macOS build is ad-hoc signed: on first launch right-click
+          > Open, or run `xattr -dr com.apple.quarantine` on the bundle.
+          EOF
+          flags=""
+          case "$GITHUB_REF_NAME" in *-alpha*|*-beta*|*-rc*) flags="--prerelease";; esac
+          gh release create "$GITHUB_REF_NAME" assets/* --verify-tag --title "Interference $GITHUB_REF_NAME" --notes-file notes.md $flags
 
   slow:
     name: Slow tests (CPU benchmark + 1 h offline soak)
