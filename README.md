@@ -85,8 +85,9 @@ The DSP never depends on the GUI. The audio thread never allocates, locks, logs 
   both test suites (any failure fails the job), then an **unsigned** `tools/make_release.ps1` ZIP. The ZIP, its
   `.sha256`, the built binaries and the GUI snapshots are uploaded as artifacts.
 - **release** (Windows, `v*` tags only, protected environment `release`): signs the tested binaries from **build**
-  when a certificate is configured, then packages the release ZIP. `SIGNATURE.txt` in the ZIP names the signer, or
-  says UNSIGNED.
+  when a certificate is configured, packages the ZIP, then publishes the ZIP and SHA-256 file in GitHub Releases.
+  `SIGNATURE.txt` in the ZIP names the signer, or says UNSIGNED. Tags containing `-alpha`, `-beta` or `-rc` publish
+  as prereleases.
 - **slow** (Windows, manual *Run workflow* only): `InterferenceTests.exe --slow`.
 
 Signing happens only for `v*` tags, in the `release` environment, and only when it holds the secret
