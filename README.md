@@ -14,10 +14,10 @@ research-informed, not measurements of particular devices.
 - **Environment**: the rig's surroundings, shared by both slots: mains hum, supply or light-dimmer buzz, radio
   interference, a ground loop through the cable shield with the receiving interface, and a nearby 2G phone.
 
-151 automatable parameters, 27 factory presets in 7 categories, a Studio chain for post-processing clearly labelled
+154 automatable parameters, 27 factory presets in 7 categories, a Studio chain for post-processing clearly labelled
 as such, and offline WAV render.
 
-Version 1.0.0 · VST3 + stand-alone · Windows x64 · 0 samples latency · mono and stereo · 44.1–192 kHz.
+Version 1.1.0 · VST3 + stand-alone (AU on macOS) · Windows x64, Linux x64, macOS universal · 0 samples latency · mono and stereo · 44.1–192 kHz.
 
 ## Documentation
 
