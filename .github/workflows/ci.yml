@@ -222,7 +222,7 @@ jobs:
       - name: Upload release ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: interference-win64-release-${{ github.ref_name }}
+          name: interference-win64-release-${{ inputs.release_tag || github.ref_name }}
           path: |
             dist/*.zip
             dist/*.sha256
