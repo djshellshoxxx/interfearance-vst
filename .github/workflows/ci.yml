@@ -142,8 +142,10 @@ jobs:
 
   release:
     name: Signed release ZIP (v* tags only)
-    needs: build
+    needs: [checks, build]
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     runs-on: windows-2022
     timeout-minutes: 30
     # protected environment: the signing secrets live here, behind the required reviewers
@@ -219,6 +221,27 @@ jobs:
             dist/*.zip
             dist/*.sha256
           if-no-files-found: error
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(Get-ChildItem -LiteralPath dist -File | Where-Object { $_.Extension -in @('.zip', '.sha256') })
+          if ($assets.Count -ne 2) { throw "Expected one release ZIP and one SHA-256 file, found $($assets.Count) assets." }
+          $notes = @'
+          Windows x64 beta release of Interference.
+
+          The ZIP contains the VST3 plug-in, stand-alone app, user documentation, third-party licence texts, and a SHA-256 checksum. Check `SIGNATURE.txt` inside the ZIP for the binary signing status.
+
+          The automated Windows build, DSP/state/render tests, and GUI/host-contract tests passed for this tag. DAW loading, real-time host soak, sidechain behavior in a host, empirical calibration, publisher licensing, and code-signing remain unverified release gates; see `Docs/QA.md` in the archive.
+          '@
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          Set-Content -LiteralPath $notesPath -Value $notes -Encoding utf8
+          $ghArgs = @('release', 'create', $env:GITHUB_REF_NAME) + @($assets | ForEach-Object { $_.FullName }) + @('--verify-tag', '--title', "Interference $env:GITHUB_REF_NAME — Windows x64", '--notes-file', $notesPath)
+          if ($env:GITHUB_REF_NAME -match '-(alpha|beta|rc)(\.|$)') { $ghArgs += '--prerelease' }
+          & gh @ghArgs
+          if ($LASTEXITCODE -ne 0) { throw "GitHub Release publication failed (exit $LASTEXITCODE)" }
 
   slow:
     name: Slow tests (CPU benchmark + 1 h offline soak)
