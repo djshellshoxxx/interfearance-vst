@@ -1,5 +1,7 @@
 # Interference
 
+> The GitHub repository is named **interfearance-vst**; the product is named **Interference**. Use the product name when identifying the plugin and the repository name for source links.
+
 Interference is an audio effect and playable sound source built from **faulty analog signal paths**. It models four
 kinds of misbehaving hardware: a **Loose Jack**, an **Exposed Plug Touch**, **Cable Handling** and a **Dirty Pot**.
 Load one, or any two different ones, in slots A and B. Every fault has a cause (movement, wear, pressure, touch,
