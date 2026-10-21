@@ -527,7 +527,7 @@ IFX_TEST (Gui, debugToolsCrashLogHardResetAndSecretPixel)
     juce::MidiBuffer cc;
     cc.addEvent (juce::MidiMessage::controllerEvent (1, 21, 64), 0);
     r.proc->processBlock (b, cc);
-    pump (120);
+    pumpUntil ([&] { return r.proc->getMidiMap().size() == 1; });
     IFX_CHECK (r.proc->getMidiMap().size() == 1);
     r.proc->setTooltipsEnabled (false);
     r.proc->param (P::ghostOn)->setValueNotifyingHost (1.0f);
