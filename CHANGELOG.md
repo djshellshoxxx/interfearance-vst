@@ -18,6 +18,14 @@ Interference uses semantic versioning: MAJOR.MINOR.PATCH.
 - Seeded randomness (seed, take, bar keying) is part of the sound: a PATCH release never changes the random
   stream of an existing seed.
 
+## 1.1.0 — 2026-10-21
+
+- **Linux and macOS builds** (VST3 + stand-alone; AU on macOS, universal arm64/x86_64). CI builds and tests all
+  three platforms; tagged releases publish Windows, Linux and macOS archives. The macOS build is ad-hoc signed,
+  not notarised; the Linux and macOS builds are tested headlessly only (see `Docs/QA.md`).
+- **Snap to Scale** for the Studio resonator: new parameters `rs_snap`, `rs_key`, `rs_scale` (8 scales). Applies to
+  the knob and to Follow MIDI. Off by default, so existing projects and presets sound unchanged.
+
 ## 1.0.0 — 2026-09-23
 
 First release.

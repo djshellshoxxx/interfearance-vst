@@ -3,6 +3,7 @@
 #include "Filters.h"
 #include "../Core/Params.h"
 #include "../Core/Random.h"
+#include "../Core/Scale.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -155,6 +156,8 @@ public:
         double f1 = p[P::rsFreq];
         if (p.on (P::rsMidi) && info.resonatorNote >= 0)
             f1 = 440.0 * std::pow (2.0, (info.resonatorNote - 69) / 12.0);
+        if (p.on (P::rsSnap))
+            f1 = Scale::snapHz (f1, (int) p[P::rsKey], (int) p[P::rsScale]);
         f1 = std::clamp (f1, 20.0, fs * 0.45);
         const double f2 = std::clamp (f1 * p[P::rsRatio], 20.0, fs * 0.45);
         const double t60 = p[P::rsDecay];

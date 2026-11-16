@@ -66,7 +66,8 @@ StudioPanel::StudioPanel (InterferenceProcessor& p)
     controls[1].addArray (juce::Array<juce::Component*> { K (P::ctAttack), K (P::ctSustain), K (P::ctMix) });
     controls[2].addArray (juce::Array<juce::Component*> { C (P::drCurve, "Curve"), K (P::drPre), K (P::drPost), K (P::drTone), K (P::drMix), T (P::drAuto, "Auto Match") });
     controls[3].addArray (juce::Array<juce::Component*> { K (P::crBits), K (P::crRate), K (P::crDither), K (P::crMix) });
-    controls[4].addArray (juce::Array<juce::Component*> { K (P::rsFreq), K (P::rsRatio), K (P::rsDecay), K (P::rsFeedback), K (P::rsMix), T (P::rsMidi, "Follow MIDI") });
+    controls[4].addArray (juce::Array<juce::Component*> { K (P::rsFreq), K (P::rsRatio), K (P::rsDecay), K (P::rsFeedback), K (P::rsMix), T (P::rsMidi, "Follow MIDI"),
+                                                          T (P::rsSnap, "Snap to Scale"), C (P::rsKey, "Key"), C (P::rsScale, "Scale") });
     controls[5].addArray (juce::Array<juce::Component*> { C (P::gtMode, "Mode"), C (P::gtKey, "Key"), C (P::gtDiv, "Division"), K (P::gtAttack), K (P::gtRelease), K (P::gtDepth),
                                                           T (P::gtChokeFb, "Choke kills FB"), T (P::gtChokeEcho, "Choke clears Echo") });
     controls[6].addArray (juce::Array<juce::Component*> { T (P::ecSync, "Sync"), C (P::ecDiv, "Division"), K (P::ecTime), K (P::ecFeedback), K (P::ecTone), K (P::ecMix),

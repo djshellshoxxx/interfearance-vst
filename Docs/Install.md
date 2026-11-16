@@ -9,17 +9,32 @@ binaries are code-signed, and by whom.
 
 - Windows 10 or 11, 64-bit, and an x64 CPU with SSE2. This is the tested build; see `QA.md` for what was verified.
 - A 64-bit VST3 host, or the stand-alone app.
-- The macOS/AU build is supported by the source (`CMakeLists.txt`) but has **not been built or tested** for 1.0.
+- Linux x64 (glibc 2.35 or newer, X11, ALSA) and macOS 10.15 or newer (Apple Silicon and Intel) builds are published
+  from 1.1.0. They are built and tested headlessly in CI only; they have not been loaded in a DAW by the author.
 
 ## Install (Windows)
 
 1. Windows may block files from a downloaded ZIP. Right-click the ZIP, choose Properties, tick *Unblock*, then OK.
-   Then unzip `Interference-1.0.0-win64.zip`.
+   Then unzip `Interference-<version>-win64.zip`.
 2. Copy the **folder** `Interference.vst3` to `C:\Program Files\Common Files\VST3\` (administrator rights needed).
    Copy the whole bundle folder, not just the DLL inside it.
 3. Start your DAW and rescan plug-ins. Interference appears as an audio effect by *Interference Audio*.
 4. Optional: put `Interference.exe` (stand-alone) anywhere, for example `C:\Program Files\Interference\`. Its
    Options page chooses the audio interface and MIDI inputs.
+
+## Install (Linux)
+
+1. `tar xzf Interference-<version>-linux.tar.gz`
+2. `mkdir -p ~/.vst3 && cp -r Interference-*/VST3/Interference.vst3 ~/.vst3/` (system-wide: `/usr/lib/vst3/`).
+3. Rescan plug-ins in your DAW. The stand-alone app is `Standalone/Interference`.
+4. Data lives under `~/Documents/Interference/` and `~/.config/Interference/`.
+
+## Install (macOS)
+
+1. Unzip `Interference-<version>-macos.zip`. The bundles are ad-hoc signed, not notarised: run
+   `xattr -dr com.apple.quarantine Interference-*/` once, or right-click > Open on first launch.
+2. Copy `VST3/Interference.vst3` to `~/Library/Audio/Plug-Ins/VST3/` and `AU/Interference.component` to
+   `~/Library/Audio/Plug-Ins/Components/`. Rescan in your DAW.
 
 ## Update
 

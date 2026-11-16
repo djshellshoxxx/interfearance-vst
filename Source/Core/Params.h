@@ -175,7 +175,10 @@ X(dimBright,   "dim_bright",  "Dimmer",            F, 0, 1, 0.5f, 0, "%", "", "L
 X(dimKind,     "dim_kind",    "Dimmer Kind",       C, 0, 2, 0, 0, "", "Cheap Wall|Stage|TV Studio", "Switching rise time: cheap wall dimmers switch in microseconds (harsh); stage and studio dimmers use chokes (softer, darker).") \
 X(gsm,         "gsm",         "2G Phone",          C, 0, 3, 0, 0, "", "Away|Check-in|Incoming|In Call", "A 2G (GSM) phone near the rig: its 217 Hz TDMA bursts are detected by the audio circuit. The rhythm is physical; the state decides when bursts happen.") \
 X(gsmDist,     "gsm_dist",    "Phone Distance",    F, 0.1f, 2, 0.5f, 1, "m", "", "Distance of the phone from the gear. Detected interference falls steeply with distance.") \
-X(rfType,      "rf_type",     "Transmitter",       C, 0, 2, 1, 0, "", "AM Station|Two-Way Radio|Motor Sparks", "What the Interference amount picks up: a distant AM station, keyed two-way radio bursts, or commutator sparks from a motor. Detected by the audio circuit (square law), so a little less RF is a lot less noise.")
+X(rfType,      "rf_type",     "Transmitter",       C, 0, 2, 1, 0, "", "AM Station|Two-Way Radio|Motor Sparks", "What the Interference amount picks up: a distant AM station, keyed two-way radio bursts, or commutator sparks from a motor. Detected by the audio circuit (square law), so a little less RF is a lot less noise.") \
+X(rsSnap,      "rs_snap",     "Snap to Scale",     B, 0, 1, 0, 0, "", "", "Snap the resonator pitch (knob or MIDI note) to the nearest note of the chosen key and scale, so rings stay in tune with the song.") \
+X(rsKey,       "rs_key",      "Key",               C, 0, 11, 0, 0, "", "C|C#|D|D#|E|F|F#|G|G#|A|A#|B", "Root note of the scale used by Snap to Scale.") \
+X(rsScale,     "rs_scale",    "Scale",             C, 0, 7, 1, 0, "", "Chromatic|Major|Minor|Dorian|Mixolydian|Pentatonic Major|Pentatonic Minor|Whole Tone", "Scale used by Snap to Scale.")
 
 enum P : int
 {
